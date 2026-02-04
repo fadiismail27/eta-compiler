@@ -1,0 +1,20 @@
+1:1 true
+1:6 id truex
+1:12 false
+1:18 id falsey
+1:25 int
+1:29 id intx
+1:34 bool
+1:39 id booly
+1:45 use
+1:49 id user
+1:54 if
+1:57 id iff
+1:61 while
+1:67 id whiles
+1:74 else
+1:79 id elsex
+1:85 return
+1:92 id returning
+1:102 length
+1:109 id lengthy
