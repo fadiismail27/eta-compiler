@@ -24,3 +24,5 @@ target
 eth/lib/
 eth/eth
 eth/update
+.DS_Store
+
