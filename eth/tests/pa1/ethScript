@@ -50,4 +50,13 @@ etac ("Test --lex") "--lex" {
     mdarrays.eta;
     add.eta;
     beauty.eta;
+    id_keyword_boundaries.eta;
+    integer_identifier_boundary.eta;
+    identifier_primes_and_underscores.eta;
+    comments_and_eof.eta;
+    operator_maximal_munch.eta;
+    string_escape_basics.eta;
+    string_unterminated_error.eta (Lexical, "unterminated string literal");
+    char_literal_cases.eta;
+    char_literal_errors.eta (Lexical, "character literal");
 }

@@ -1,0 +1,2 @@
+use io // comment after tokens
+x:int=2 // EOF comment

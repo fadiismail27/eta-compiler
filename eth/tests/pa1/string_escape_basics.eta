@@ -1,0 +1,2 @@
+s:int[]="A\\B\"C"
+t:int[]="Quote\'s"
