@@ -16,10 +16,7 @@ name = "compiler"
 version = "0.1.0"
 dependencies = [
  "logos",
-<<<<<<< HEAD
-=======
  "regex",
->>>>>>> charles/p4
 ]
 
 [[package]]
