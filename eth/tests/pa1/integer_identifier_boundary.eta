@@ -1,1 +1,2 @@
+// Integer token boundaries before identifiers/underscores.
 123abc 0z 9_ 10x
