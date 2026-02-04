@@ -1,9 +1,17 @@
 use logos::Logos;
 use regex::Regex;
 
+fn newline_callback(lex: &mut Lexer<Token>) -> Skip {
+    lex.extras.0 += 1;
+    lex.extras.1 = lex.span().end;
+    Skip
+}
+
 #[derive(Debug, Logos)]
-#[logos(extras = )]
-#[logos(skip(r"\n", newline_callback))]
+#[logos(extras = (usize, usize))]
+#[logos(skip r"[ \t\r]+")] // whitespace (no newlines)
+#[logos(skip(r"[\n]+[\\]", newline_callback))] // Add double slash to skip, whitespace
+#[logos(skip r"//[^\n]*")]  // ignore comments
 pub enum Token {
        // Keywords - each gets its own variant
        #[token("if")]
@@ -70,8 +78,6 @@ pub enum Token {
        And,
        #[token("|")]
        Or,
-       #[token("//")]
-       DQuote,
 
        // Infinite sets - carry data
        #[regex(r"[a-zA-Z][a-zA-Z0-9_']*")]
