@@ -1,0 +1,4 @@
+// Character literal errors: multi-char, bad escape, unterminated.
+bad2:int='ab'
+bad3:int='\q'
+bad4:int='

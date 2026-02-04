@@ -1,0 +1,3 @@
+// Valid character escapes and hex codepoint literal.
+d:int='\n'
+e:int='\x{64}'

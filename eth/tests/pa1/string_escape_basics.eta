@@ -1,0 +1,3 @@
+// String escapes: backslash, double-quote, and single-quote.
+s:int[]="A\\B\"C"
+t:int[]="Quote\'s"

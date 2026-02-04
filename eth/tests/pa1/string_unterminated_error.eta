@@ -1,0 +1,2 @@
+// Unterminated string literal at EOF should error.
+a:int[]="unterminated
