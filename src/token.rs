@@ -19,7 +19,7 @@ pub enum Token {
        #[token("true")]
        True,
        #[token("false")]
-       False
+       False,
 
        // Symbols - each gets its own variant - think about grouping some symbols later...
        #[token("+")]
@@ -70,6 +70,8 @@ pub enum Token {
        And,
        #[token("|")]
        Or,
+       #[token("//")]
+       DQuote,
 
        // Infinite sets - carry data
        #[regex(r"[a-zA-Z][a-zA-Z0-9_']*")]
@@ -104,8 +106,8 @@ pub enum LexerWrapper {
 
 // Parse the list, when you match, push the TokenInfo to the vector, or return error
 pub fn tokenize(lex: &mut Lexer<Token>) -> Vector<LexerWrapper> {
-    let mut vec: Vector<LexerWrapper> = Vec::new(); // find information necessary to know <line> and <col>
-    let (line, col) = lex.extras; // grab position from extras
+    let mut vec: Vector<LexerWrapper> = Vec::new(); // Find information necessary to know <line> and <col>
+    let (line, col) = lex.extras; // Grab position from extras
 
     for result in lex {
         match result {
