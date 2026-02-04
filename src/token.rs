@@ -1,7 +1,9 @@
 use logos::Logos;
 use regex::Regex;
 
-#[derive(Logos)]
+#[derive(Debug, Logos)]
+#[logos(extras = )]
+#[logos(skip(r"\n", newline_callback))]
 pub enum Token {
        // Keywords - each gets its own variant
        #[token("if")]
@@ -70,11 +72,11 @@ pub enum Token {
        Or,
 
        // Infinite sets - carry data
-       #[regex("", func)]
+       #[regex(r"[a-zA-Z][a-zA-Z0-9_']*")]
        Identifier(String), // String starts with " so we can ignore precedence - any char followed by non-special chars
-       #[regex("[0-9]+")]
-       Integer(i64),
-       #[regex("")] // double quote followed by any sequence of chars (escape chars necessary for " and '), followed by a double quote
+       #[regex(r"[0-9]+", |lex| (lex.slice().parse().ok()?))]
+       Integer(u64),
+       #[regex(r#""([^"\n\\]|\\.)*""#)] // Double quote followed by any sequence of chars (escape chars necessary for " and '), followed by a double quote
        String(String),
 }
 
@@ -94,21 +96,26 @@ pub enum LexerError {
     MultiCharacterConstant, // 'ab'
 }
 
-// Maybe change name lol
+// Maybe change name lolz
 pub enum LexerWrapper {
     Information(TokenInfo)
     Error(LexerError)
 }
 
-// parse the list, when you match, push the TokenInfo to the vector, or return error...
+// Parse the list, when you match, push the TokenInfo to the vector, or return error
 pub fn tokenize(lex: &mut Lexer<Token>) -> Vector<LexerWrapper> {
+    let mut vec: Vector<LexerWrapper> = Vec::new(); // find information necessary to know <line> and <col>
+    let (line, col) = lex.extras; // grab position from extras
 
-
+    for result in lex {
+        match result {
+            Ok(token) => vec.push(LexerWrapper::Information(
+                TokenInfo {
+                token: token,
+                line: line,
+                col: col
+            }))
+            Err(e) => vec.push(LexerError::Error(e)) // match e with LexerError, push error to vector
+        }
+    }
 }
-
-/*
- * In the main loop:
- *  1. Create lexer from given input - different functions borrow it sequentially
- *  2. Call tokenize with this lexer, and store the result Vector
- *  3. Call some parsing function to push the final output to the specified file
- */
