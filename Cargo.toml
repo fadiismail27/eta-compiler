@@ -2,7 +2,7 @@ strum = { version = "0.26", features = ["derive"] }
 strum_macros = "0.26"
 
 [package]
-name = "compiler"
+name = "ye38_compiler"
 version = "0.1.0"
 edition = "2024"
 
