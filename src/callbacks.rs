@@ -2,10 +2,7 @@ use logos::{Lexer, Skip};
 use crate::token::{Token, LexerError};
 
 pub fn newline_callback(lex: &mut Lexer<Token>) -> Skip {
-    // Increment line unless it was comment-only (no token AND saw comment)
-    if lex.extras.has_token || !lex.extras.saw_comment {
-        lex.extras.line += 1;
-    }
+    lex.extras.line += 1;
     lex.extras.line_start = lex.span().end;
     lex.extras.has_token = false;
     lex.extras.saw_comment = false;

@@ -3,7 +3,7 @@ use crate::token::{LexResult, LexResultKind, Token, LexerError};
 impl std::fmt::Display for LexerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            LexerError::UnterminatedLiteral => write!(f, "unterminated literal"),
+            LexerError::UnterminatedLiteral => write!(f, "unterminated string literal"),
             LexerError::InvalidEscape => write!(f, "invalid escape"),
             LexerError::InvalidHex => write!(f, "invalid hex escape"),
             LexerError::EmptyCharacter => write!(f, "empty character literal"),

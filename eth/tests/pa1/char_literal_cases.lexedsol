@@ -1,10 +1,10 @@
-1:1 id d
-1:2 :
-1:3 int
-1:6 =
-1:7 character \n
-2:1 id e
+2:1 id d
 2:2 :
 2:3 int
 2:6 =
-2:7 character d
+2:7 character \n
+3:1 id e
+3:2 :
+3:3 int
+3:6 =
+3:7 character d
