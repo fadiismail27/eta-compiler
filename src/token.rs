@@ -3,12 +3,24 @@ use strum_macros::Display;
 use crate::callbacks::{newline_callback, comment_callback, lex_string, lex_char};
 
 #[derive(Debug, Logos, PartialEq, Display)]
-#[logos(error = LexerError)]
 #[logos(extras = LexerExtras)]
-#[logos(skip r"[ \t\r]+")]
-#[logos(skip(r"\n", newline_callback))]
-#[logos(skip(r"//[^\n]*?", comment_callback))]
 pub enum Token {
+    // Error token for logos 0.12
+    #[error]
+    Error,
+
+    // Skip whitespace (not newlines)
+    #[regex(r"[ \t\r]+", logos::skip)]
+    Whitespace,
+
+    // Newlines - need to track line numbers
+    #[regex(r"\n", newline_callback)]
+    Newline,
+
+    // Comments
+    #[regex(r"//[^\n]*", comment_callback)]
+    Comment,
+
     // Keywords
     #[strum(serialize = "if")]
     #[token("if")]
@@ -187,11 +199,12 @@ pub struct LexerExtras {
     pub line_start: usize,
     pub has_token: bool,
     pub saw_comment: bool,
+    pub error: Option<LexerError>,
 }
 
 impl LexerExtras {
     pub fn new() -> Self {
-        Self { line: 1, line_start: 0, has_token: false, saw_comment: false }
+        Self { line: 1, line_start: 0, has_token: false, saw_comment: false, error: None }
     }
 }
 
@@ -219,28 +232,42 @@ pub enum LexerError {
 
 // lex the list, when you match, push the TokenInfo to the vector, or return error
 pub fn tokenize(lex: &mut Lexer<Token>) -> Vec<LexResult> {
-    let mut vec: Vec<LexResult> = Vec::new(); // Find information necessary to know <line> and <col>
+    let mut vec: Vec<LexResult> = Vec::new();
 
     while let Some(result) = lex.next() {
         let line = lex.extras.line;
         let col = lex.span().start - lex.extras.line_start + 1;
-        lex.extras.has_token = true;
+
+        // Check if callback stored an error
+        if let Some(err) = lex.extras.error.take() {
+            vec.push(LexResult {
+                result: LexResultKind::Error(err),
+                line,
+                col,
+            });
+            return vec;
+        }
 
         match result {
-            Ok(token) => vec.push(
-                LexResult {
+            Token::Error => {
+                vec.push(LexResult {
+                    result: LexResultKind::Error(LexerError::InvalidCharacter),
+                    line,
+                    col,
+                });
+                return vec;
+            }
+            Token::Newline | Token::Comment => {
+                // Skip these, they're handled by callbacks for tracking
+                continue;
+            }
+            token => {
+                lex.extras.has_token = true;
+                vec.push(LexResult {
                     result: LexResultKind::Token(token),
                     line,
                     col,
-            }),
-            Err(e) => {
-                vec.push(
-                    LexResult {
-                        result: LexResultKind::Error(e),
-                        line,
-                        col,
                 });
-                return vec;
             }
         }
     }
