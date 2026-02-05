@@ -2,7 +2,11 @@ use logos::{Lexer, Skip};
 use crate::token::{Token, LexerError};
 
 pub fn newline_callback(lex: &mut Lexer<Token>) -> Skip {
-    lex.extras.0 += 1;
+    // Only increment line count if we've seen a token on this line
+    if lex.extras.2 {
+        lex.extras.0 += 1;
+        lex.extras.2 = false;
+    }
     lex.extras.1 = lex.span().end;
     Skip
 }
@@ -11,96 +15,111 @@ pub fn newline_callback(lex: &mut Lexer<Token>) -> Skip {
 /// `source` is the full source chars, `pos` is the index of the opening quote.
 /// Returns the token and the index to resume lexing from.
 pub fn lex_char(lex: &mut Lexer<Token>) -> Result<char, LexerError> {
-    let raw = lex.slice();
-    if raw.len() < 2 {
-        return Err(LexerError::UnterminatedLiteral);
-    }
-    let inner = &raw[1..raw.len() - 1];
+    let remainder = lex.remainder();
+    let mut consumed = 0;
+    let mut chars = remainder.chars();
     
-    let mut chars = inner.chars();
-    match chars.next() {
-        None => Err(LexerError::EmptyCharacter),
+    // Parse the content until closing quote
+    let result = match chars.next() {
+        None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+        Some('\'') => {
+            consumed += 1;
+            lex.bump(consumed);
+            return Err(LexerError::EmptyCharacter);
+        }
         Some('\\') => {
+            consumed += 1;
             match chars.next() {
-                Some('n') => {
-                    if chars.next().is_some() { return Err(LexerError::MultiCharacterConstant); }
-                    Ok('\n')
-                }
-                Some('\'') => {
-                    if chars.next().is_some() { return Err(LexerError::MultiCharacterConstant); }
-                    Ok('\'')
-                }
-                Some('\\') => {
-                    if chars.next().is_some() { return Err(LexerError::MultiCharacterConstant); }
-                    Ok('\\')
-                }
-                Some('\"') => {
-                    if chars.next().is_some() { return Err(LexerError::MultiCharacterConstant); }
-                    Ok('\"')
-                }
+                None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                Some('n') => { consumed += 1; '\n' }
+                Some('\'') => { consumed += 1; '\'' }
+                Some('\\') => { consumed += 1; '\\' }
+                Some('"') => { consumed += 1; '"' }
                 Some('x') => {
+                    consumed += 1;
                     if chars.next() != Some('{') {
                         return Err(LexerError::InvalidEscape);
                     }
+                    consumed += 1;
                     let mut hex = String::new();
-                    while let Some(c) = chars.next() {
-                        if c == '}' { break; }
-                        hex.push(c);
+                    loop {
+                        match chars.next() {
+                            None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                            Some('}') => { consumed += 1; break; }
+                            Some(c) => { consumed += c.len_utf8(); hex.push(c); }
+                        }
                     }
-                    if chars.next().is_some() { return Err(LexerError::MultiCharacterConstant); }
-                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidUnicode)?;
-                    char::from_u32(code).ok_or(LexerError::InvalidUnicode)
+                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidHex)?;
+                    char::from_u32(code).ok_or(LexerError::InvalidHex)?
                 }
-                _ => Err(LexerError::InvalidEscape),
+                _ => return Err(LexerError::InvalidEscape),
             }
         }
         Some(c) => {
-            if chars.next().is_some() {
-                return Err(LexerError::MultiCharacterConstant);
-            }
-            Ok(c)
+            consumed += c.len_utf8();
+            c
         }
+    };
+    
+    // Expect closing quote
+    match chars.next() {
+        Some('\'') => {
+            consumed += 1;
+            lex.bump(consumed);
+            Ok(result)
+        }
+        Some('\n') | None => Err(LexerError::UnterminatedLiteral),
+        Some(_) => Err(LexerError::MultiCharacterConstant),
     }
 }
 
 pub fn lex_string(lex: &mut Lexer<Token>) -> Result<String, LexerError> {
-    let raw = lex.slice();
-    if raw.len() < 2 {
-        return Err(LexerError::UnterminatedLiteral);
-    }
-    let inner = &raw[1..raw.len() - 1];
-
+    let remainder = lex.remainder();
+    let mut consumed = 0;
     let mut result = String::new();
-    let mut chars = inner.chars();
+    let mut chars = remainder.chars();
 
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            result.push(c);
-            continue;
-        }
+    loop {
         match chars.next() {
-            Some('n') => result.push('\n'),
-            Some('\'') => result.push('\''),
-            Some('\\') => result.push('\\'),
-            Some('\"') => result.push('\"'),
-            Some('x') => {
-                if chars.next() != Some('{') {
-                    return Err(LexerError::InvalidEscape);
-                }
-                let mut hex = String::new();
-
-                while let Some(c) = chars.next() {
-                    if c == '}' {
-                        break;
-                    }
-                    hex.push(c);
-                }
-                let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidUnicode)?;
-                let uchar = char::from_u32(code).ok_or(LexerError::InvalidUnicode)?;
-                result.push(uchar);
+            None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+            Some('"') => {
+                consumed += 1;
+                lex.bump(consumed);
+                return Ok(result);
             }
-            _ => return Err(LexerError::InvalidEscape),
+            Some('\\') => {
+                consumed += 1;
+                match chars.next() {
+                    None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                    Some('n') => { consumed += 1; result.push('\n'); }
+                    Some('\'') => { consumed += 1; result.push('\''); }
+                    Some('\\') => { consumed += 1; result.push('\\'); }
+                    Some('"') => { consumed += 1; result.push('"'); }
+                    Some('x') => {
+                        consumed += 1;
+                        if chars.next() != Some('{') {
+                            return Err(LexerError::InvalidEscape);
+                        }
+                        consumed += 1;
+                        let mut hex = String::new();
+                        loop {
+                            match chars.next() {
+                                None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                                Some('}') => { consumed += 1; break; }
+                                Some(c) => { consumed += c.len_utf8(); hex.push(c); }
+                            }
+                        }
+                        let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidHex)?;
+                        let uchar = char::from_u32(code).ok_or(LexerError::InvalidHex)?;
+                        result.push(uchar);
+                    }
+                    _ => return Err(LexerError::InvalidEscape),
+                }
+            }
+            Some(c) => {
+                consumed += c.len_utf8();
+                result.push(c);
+            }
         }
     }
-    Ok(result)
 }

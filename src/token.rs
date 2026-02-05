@@ -1,130 +1,230 @@
-use logos::Logos;
-use regex::Regex;
-use crate::callbacks::{newline_callback, parse_string, parse_char};
+use logos::{Logos, Lexer};
+use strum_macros::Display;
+use crate::callbacks::{newline_callback, lex_string, lex_char};
 
-#[derive(Debug, Logos)]
-#[logos(extras = (usize, usize))]
-#[logos(skip r"[ \t\r]+")] // whitespace (no newlines)
-#[logos(skip(r"[\n]+[\\]", newline_callback))] // Add double slash to skip, whitespace
-#[logos(skip r"//[^\n]*")]  // ignore comments
+#[derive(Debug, Logos, PartialEq, Display)]
+#[logos(error = LexerError)]
+#[logos(extras = (usize, usize, bool))]
+#[logos(skip r"[ \t\r]+")]
+#[logos(skip(r"\n", newline_callback))]
+#[logos(skip r"//[^\n]*")]
 pub enum Token {
-       // Keywords - each gets its own variant
-       #[token("if")]
-       If,
-       #[token("while")]
-       While,
-       #[token("for")]
-       For,
-       #[token("let")]
-       Let,
-       #[token("int")]
-       Int,
-       #[token("true")]
-       True,
-       #[token("false")]
-       False,
+    // Keywords
+    #[strum(serialize = "if")]
+    #[token("if")]
+    If,
 
-       // Symbols - each gets its own variant - think about grouping some symbols later...
-       #[token("+")]
-       Plus,
-       #[token("-")]
-       Minus,
-       #[token("(")]
-       LParen,
-       #[token(")")]
-       RParen,
-       #[token("[")]
-       LBracket,
-       #[token("]")]
-       RBracket,
-       #[token("{")]
-       LBrace,
-       #[token("}")]
-       RBrace,
-       #[token(";")]
-       Semicolon,
-       #[token(":")]
-       Colon,
-       #[token("!")]
-       Negation,
-       #[token("*")]
-       Mul,
-       #[token("*>>")]
-       HighMul,
-       #[token("/")]
-       Division,
-       #[token("%")]
-       Remainder,
-       #[token("<")]
-       LThan,
-       #[token("<=")]
-       Leq,
-       #[token(">=")]
-       Geq,
-       #[token(">")]
-       GThan,
-       #[token("==")]
-       Equal,
-       #[token("=")]
-       Assign,
-       #[token("!=")]
-       Neq,
-       #[token("&")]
-       And,
-       #[token("|")]
-       Or,
+    #[strum(serialize = "while")]
+    #[token("while")]
+    While,
 
-       // Infinite sets - carry data
-       #[regex(r"[a-zA-Z][a-zA-Z0-9_']*")]
-       Identifier(String), // String starts with " so we can ignore precedence - any char followed by non-special chars
-       #[regex(r"[0-9]+", |lex| format!(lex.slice().parse().ok()?))]
-       Integer(u64),
-       #[token("\"", parse_string)]
-       String(String),
-       #[token('\'', parse_char)]
-       Char(char)
+    #[strum(serialize = "for")]
+    #[token("for")]
+    For,
+
+    #[strum(serialize = "let")]
+    #[token("let")]
+    Let,
+
+    #[strum(serialize = "int")]
+    #[token("int")]
+    Int,
+
+    #[strum(serialize = "bool")]
+    #[token("bool")]
+    Bool,
+
+    #[strum(serialize = "true")]
+    #[token("true")]
+    True,
+
+    #[strum(serialize = "false")]
+    #[token("false")]
+    False,
+
+    #[strum(serialize = "use")]
+    #[token("use")]
+    Use,
+
+    #[strum(serialize = "else")]
+    #[token("else")]
+    Else,
+
+    #[strum(serialize = "return")]
+    #[token("return")]
+    Return,
+
+    #[strum(serialize = "length")]
+    #[token("length")]
+    Length,
+
+    // Symbols
+    #[strum(serialize = "+")]
+    #[token("+")]
+    Plus,
+
+    #[strum(serialize = "-")]
+    #[token("-")]
+    Minus,
+
+    #[strum(serialize = "(")]
+    #[token("(")]
+    LParen,
+
+    #[strum(serialize = ")")]
+    #[token(")")]
+    RParen,
+
+    #[strum(serialize = "[")]
+    #[token("[")]
+    LBracket,
+
+    #[strum(serialize = "]")]
+    #[token("]")]
+    RBracket,
+
+    #[strum(serialize = "{")]
+    #[token("{")]
+    LBrace,
+
+    #[strum(serialize = "}}")]
+    #[token("}")]
+    RBrace,
+
+    #[strum(serialize = ";")]
+    #[token(";")]
+    Semicolon,
+
+    #[strum(serialize = ":")]
+    #[token(":")]
+    Colon,
+
+    #[strum(serialize = "!")]
+    #[token("!")]
+    Negation,
+
+    #[strum(serialize = "*")]
+    #[token("*")]
+    Mul,
+
+    #[strum(serialize = "*>>")]
+    #[token("*>>")]
+    HighMul,
+
+    #[strum(serialize = "/")]
+    #[token("/")]
+    Division,
+
+    #[strum(serialize = "%")]
+    #[token("%")]
+    Remainder,
+
+    #[strum(serialize = "<")]
+    #[token("<")]
+    LThan,
+
+    #[strum(serialize = "<=")]
+    #[token("<=")]
+    Leq,
+
+    #[strum(serialize = ">=")]
+    #[token(">=")]
+    Geq,
+
+    #[strum(serialize = ">")]
+    #[token(">")]
+    GThan,
+
+    #[strum(serialize = "==")]
+    #[token("==")]
+    Equal,
+
+    #[strum(serialize = "=")]
+    #[token("=")]
+    Assign,
+
+    #[strum(serialize = "!=")]
+    #[token("!=")]
+    Neq,
+
+    #[strum(serialize = "&")]
+    #[token("&")]
+    And,
+
+    #[strum(serialize = "|")]
+    #[token("|")]
+    Or,
+
+    #[strum(serialize = ",")]
+    #[token(",")]
+    Comma,
+
+    #[strum(serialize = "_")]
+    #[token("_")]
+    Underscore,
+
+    // Data-carrying variants (handled separately in format_token)
+    #[strum(serialize = "id")]
+    #[regex(r"[a-zA-Z][a-zA-Z0-9_']*", |lex| lex.slice().to_string())]
+    Identifier(String),
+
+    #[strum(serialize = "integer")]
+    #[regex(r"[0-9]+", |lex| lex.slice().parse().ok())]
+    Integer(u64),
+
+    #[strum(serialize = "string")]
+    #[token("\"", lex_string)]
+    String(String),
+
+    #[strum(serialize = "character")]
+    #[token("'", lex_char)]
+    Char(char),
 }
 
 pub struct LexResult {
     pub result: LexResultKind,
-    pub row: usize,
+    pub line: usize,
     pub col: usize,
 }
 
 pub enum LexResultKind {
-    Token(Token)
+    Token(Token),
     Error(LexerError)
 }
 
-// TODO: Add appropriate token / regex attributed for errors
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum LexerError {
-    InvalidCharacter,       // For things like '@'
+    #[default]
+    InvalidCharacter,
     UnterminatedLiteral,    // Hit newline or EOF
     InvalidEscape,          // e.g., \q
     InvalidHex,             // e.g., \x{GG}
+    EmptyCharacter,
+    MultiCharacterConstant,
 }
 
-// Parse the list, when you match, push the TokenInfo to the vector, or return error
-pub fn tokenize(lex: &mut Lexer<Token>) -> Vector<LexResult> {
-    let mut vec: Vector<LexerWrapper> = Vec::new(); // Find information necessary to know <line> and <col>
+// lex the list, when you match, push the TokenInfo to the vector, or return error
+pub fn tokenize(lex: &mut Lexer<Token>) -> Vec<LexResult> {
+    let mut vec: Vec<LexResult> = Vec::new(); // Find information necessary to know <line> and <col>
 
-    for result in lex {
-        let (line, col) = lex.extras; // Grab position from extras
+    while let Some(result) = lex.next() {
+        let (line, line_start) = lex.extras;
+        let col = lex.span().start - line_start + 1;
 
         match result {
             Ok(token) => vec.push(
                 LexResult {
-                    LexResultKind::Token(token),
+                    result: LexResultKind::Token(token),
                     line,
                     col,
             }),
             Err(e) => {
                 vec.push(
                     LexResult {
-                        LexResultKind::Error(e),
+                        result: LexResultKind::Error(e),
                         line,
                         col,
-                }),
+                });
                 return vec;
             }
         }

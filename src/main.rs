@@ -3,8 +3,8 @@ use compiler::cli::Args;
 use compiler::formatter;
 use compiler::io;
 use std::process;
-use crate::token;
->>>>>>> 4f5cb056aa6dc82c43a68c2e8b2e5fbbe8f096ec
+use compiler::token::{self, Token};
+use logos::Logos;
 
 fn main() {
     let args = Args::parse();
@@ -35,9 +35,9 @@ fn process_file(source_path: &str, output_dir: Option<&str>) -> Result<(), Strin
     let source = io::read_source_file(source_path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
-    // 2. Call Person A's lexer
-    // Expected signature: pub fn lex(source: &str) -> Vec<TokenInfo>
-    let tokens = token::tokenize(&source);
+    // 2. Call lexer
+let mut lex = Token::lexer_with_extras(&source, (1, 0));
+    let tokens = token::tokenize(&mut lex);
 
     // 3. Format tokens
     let output = formatter::format_lexed_output(&tokens);
