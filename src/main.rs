@@ -3,7 +3,7 @@ use compiler::cli::Args;
 use compiler::formatter;
 use compiler::io;
 use std::process;
-use compiler::token::{self, Token};
+use compiler::token::{self, Token, LexerExtras};
 use logos::Logos;
 
 fn main() {
@@ -36,7 +36,7 @@ fn process_file(source_path: &str, output_dir: Option<&str>) -> Result<(), Strin
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     // 2. Call lexer
-let mut lex = Token::lexer_with_extras(&source, (1, 0));
+    let mut lex = Token::lexer_with_extras(&source, LexerExtras::new());
     let tokens = token::tokenize(&mut lex);
 
     // 3. Format tokens

@@ -1,13 +1,13 @@
 use logos::{Logos, Lexer};
 use strum_macros::Display;
-use crate::callbacks::{newline_callback, lex_string, lex_char};
+use crate::callbacks::{newline_callback, comment_callback, lex_string, lex_char};
 
 #[derive(Debug, Logos, PartialEq, Display)]
 #[logos(error = LexerError)]
-#[logos(extras = (usize, usize, bool))]
+#[logos(extras = LexerExtras)]
 #[logos(skip r"[ \t\r]+")]
 #[logos(skip(r"\n", newline_callback))]
-#[logos(skip r"//[^\n]*")]
+#[logos(skip(r"//[^\n]*?", comment_callback))]
 pub enum Token {
     // Keywords
     #[strum(serialize = "if")]
@@ -181,6 +181,20 @@ pub enum Token {
     Char(char),
 }
 
+#[derive(Default)]
+pub struct LexerExtras {
+    pub line: usize,
+    pub line_start: usize,
+    pub has_token: bool,
+    pub saw_comment: bool,
+}
+
+impl LexerExtras {
+    pub fn new() -> Self {
+        Self { line: 1, line_start: 0, has_token: false, saw_comment: false }
+    }
+}
+
 pub struct LexResult {
     pub result: LexResultKind,
     pub line: usize,
@@ -208,8 +222,9 @@ pub fn tokenize(lex: &mut Lexer<Token>) -> Vec<LexResult> {
     let mut vec: Vec<LexResult> = Vec::new(); // Find information necessary to know <line> and <col>
 
     while let Some(result) = lex.next() {
-        let (line, line_start) = lex.extras;
-        let col = lex.span().start - line_start + 1;
+        let line = lex.extras.line;
+        let col = lex.span().start - lex.extras.line_start + 1;
+        lex.extras.has_token = true;
 
         match result {
             Ok(token) => vec.push(

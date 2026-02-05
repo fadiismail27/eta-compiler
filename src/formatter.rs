@@ -3,12 +3,12 @@ use crate::token::{LexResult, LexResultKind, Token, LexerError};
 impl std::fmt::Display for LexerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            LexerError::UnterminatedLiteral => write!(f, "Unterminated literal"),
-            LexerError::InvalidEscape => write!(f, "Invalid escape"),
-            LexerError::InvalidHex => write!(f, "Invalid hex"),
-            LexerError::EmptyCharacter => write!(f, "Empty character"),
-            LexerError::MultiCharacterConstant => write!(f, "Multi-character constant"),
-            LexerError::InvalidCharacter => write!(f, "Invalid character"),
+            LexerError::UnterminatedLiteral => write!(f, "unterminated literal"),
+            LexerError::InvalidEscape => write!(f, "invalid escape"),
+            LexerError::InvalidHex => write!(f, "invalid hex escape"),
+            LexerError::EmptyCharacter => write!(f, "empty character literal"),
+            LexerError::MultiCharacterConstant => write!(f, "multi-character literal"),
+            LexerError::InvalidCharacter => write!(f, "invalid character"),
         }
     }
 }
@@ -38,8 +38,6 @@ fn escape_char(c: char) -> String {
         '\t' => "\\t".to_string(),
         '\r' => "\\r".to_string(),
         '\\' => "\\\\".to_string(),
-        '\'' => "\\'".to_string(),
-        '"' => "\\\"".to_string(),
         c if c.is_ascii_graphic() || c == ' ' => c.to_string(),
         c => format!("\\x{{{:X}}}", c as u32),
     }
