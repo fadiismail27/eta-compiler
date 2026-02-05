@@ -16,5 +16,7 @@ regex = "1.12.3"
 clap = { version = "=3.2.25", features = ["derive"] }
 strum = { version = "0.26", features = ["derive"] }
 strum_macros = "0.26"
-textwrap = "=0.15.2"
+
+[patch.crates-io]
+textwrap = { version = "=0.15.2" }
 
