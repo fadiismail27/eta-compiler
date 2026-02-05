@@ -1,9 +1,9 @@
 use clap::Parser;
-use compiler::cli::Args;
-use compiler::formatter;
-use compiler::io;
+use ye38_compiler::cli::Args;
+use ye38_compiler::formatter;
+use ye38_compiler::io;
 use std::process;
-use compiler::token::{self, Token, LexerExtras};
+use ye38_compiler::token::{self, Token, LexerExtras};
 use logos::Logos;
 
 fn main() {
