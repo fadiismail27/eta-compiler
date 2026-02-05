@@ -3,8 +3,8 @@ use compiler::cli::Args;
 use compiler::formatter;
 use compiler::io;
 use std::process;
-use logos::Logos;
-use crate::token::{tokenize, Token};
+use crate::token;
+>>>>>>> 4f5cb056aa6dc82c43a68c2e8b2e5fbbe8f096ec
 
 fn main() {
     let args = Args::parse();
