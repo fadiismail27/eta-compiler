@@ -1,49 +1,42 @@
-// Formatter for token output
-// Depends on Person A's token types from lexer module
+use crate::lexer::{LexResult, LexResultKind, Token, LexerError};
 
-/// Formats a single token for .lexed output
-/// Returns: "<line>:<col> <token_type> [<value>]"
-///
-/// Expected TokenInfo structure:
-/// ```
-/// pub struct TokenInfo {
-///     pub token: Token,
-///     pub pos: SourcePos,
-/// }
-///
-/// pub struct SourcePos {
-///     pub line: usize,
-///     pub col: usize,
-/// }
-///
-/// pub enum Token {
-///     Keyword(String),
-///     Id(String),
-///     Integer(String),
-///     CharLiteral(String),
-///     StringLiteral(String),
-///     Symbol(String),
-///     Error(String),
-/// }
-/// ```
-pub fn format_token(t: &crate::lexer::TokenInfo) -> String {
-    let pos = format!("{}:{}", t.pos.line, t.pos.col);
-    match &t.token {
-        crate::lexer::Token::Id(name) => format!("{} id {}", pos, name),
-        crate::lexer::Token::Integer(val) => format!("{} integer {}", pos, val),
-        crate::lexer::Token::CharLiteral(val) => format!("{} character {}", pos, val),
-        crate::lexer::Token::StringLiteral(val) => format!("{} string {}", pos, val),
-        crate::lexer::Token::Symbol(s) => format!("{} {}", pos, s),
-        crate::lexer::Token::Keyword(k) => format!("{} {}", pos, k),
-        crate::lexer::Token::Error(desc) => format!("{} error:{}", pos, desc),
+impl std::fmt::Display for LexerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            LexerError::InvalidCharacter => write!(f, "Invalid character"),
+            LexerError::UnterminatedLiteral => write!(f, "Unterminated literal"),
+            LexerError::InvalidEscape => write!(f, "Invalid escape"),
+            LexerError::InvalidHex => write!(f, "Invalid hex"),
+            LexerError::EmptyCharacter => write!(f, "Empty character"),
+            LexerError::MultiCharacterConstant => write!(f, "Multi-character constant"),
+        }
+    }
+}
+
+pub fn format_result(r: &LexResult) -> String {
+    let pos = format!("{}:{}", r.line, r.col);
+    match &r.kind {
+        LexResultKind::Token(token) => format_token(&pos, token),
+        LexResultKind::Error(err) => format!("{} error:{}", pos, err),
+    }
+}
+
+fn format_token(pos: &str, token: &Token) -> String {
+    match token {
+        Token::Id(name) => format!("{} id {}", pos, name),
+        Token::Integer(val) => format!("{} integer {}", pos, val),
+        Token::CharLiteral(val) => format!("{} character {}", pos, val),
+        Token::StringLiteral(val) => format!("{} string {}", pos, val),
+        Token::Symbol(s) => format!("{} {}", pos, s),
+        Token::Keyword(k) => format!("{} {}", pos, k),
     }
 }
 
 /// Formats all tokens into the complete .lexed file content
-pub fn format_lexed_output(tokens: &[crate::lexer::TokenInfo]) -> String {
-    tokens
+pub fn format_lexed_output(results: &[LexResult]) -> String {
+    results
         .iter()
-        .map(format_token)
+        .map(format_result)
         .collect::<Vec<_>>()
         .join("\n")
 }

@@ -1,11 +1,6 @@
 use logos::Logos;
 use regex::Regex;
-
-fn newline_callback(lex: &mut Lexer<Token>) -> Skip {
-    lex.extras.0 += 1;
-    lex.extras.1 = lex.span().end;
-    Skip
-}
+use crate::callbacks::{newline_callback, parse_string, parse_char};
 
 #[derive(Debug, Logos)]
 #[logos(extras = (usize, usize))]
@@ -82,16 +77,23 @@ pub enum Token {
        // Infinite sets - carry data
        #[regex(r"[a-zA-Z][a-zA-Z0-9_']*")]
        Identifier(String), // String starts with " so we can ignore precedence - any char followed by non-special chars
-       #[regex(r"[0-9]+", |lex| (lex.slice().parse().ok()?))]
+       #[regex(r"[0-9]+", |lex| format!(lex.slice().parse().ok()?))]
        Integer(u64),
-       #[regex(r#""([^"\n\\]|\\.)*""#)] // Double quote followed by any sequence of chars (escape chars necessary for " and '), followed by a double quote
+       #[token("\"", parse_string)]
        String(String),
+       #[token('\'', parse_char)]
+       Char(char)
 }
 
-pub struct TokenInfo {
-    pub token: Token,
+pub struct LexResult {
+    pub result: LexResultKind,
     pub row: usize,
     pub col: usize,
+}
+
+pub enum LexResultKind {
+    Token(Token)
+    Error(LexerError)
 }
 
 // TODO: Add appropriate token / regex attributed for errors
@@ -100,30 +102,32 @@ pub enum LexerError {
     UnterminatedLiteral,    // Hit newline or EOF
     InvalidEscape,          // e.g., \q
     InvalidHex,             // e.g., \x{GG}
-    EmptyCharacter,         // ''
-    MultiCharacterConstant, // 'ab'
-}
-
-// Maybe change name lolz
-pub enum LexerWrapper {
-    Information(TokenInfo)
-    Error(LexerError)
 }
 
 // Parse the list, when you match, push the TokenInfo to the vector, or return error
-pub fn tokenize(lex: &mut Lexer<Token>) -> Vector<LexerWrapper> {
+pub fn tokenize(lex: &mut Lexer<Token>) -> Vector<LexResult> {
     let mut vec: Vector<LexerWrapper> = Vec::new(); // Find information necessary to know <line> and <col>
-    let (line, col) = lex.extras; // Grab position from extras
 
     for result in lex {
+        let (line, col) = lex.extras; // Grab position from extras
+
         match result {
-            Ok(token) => vec.push(LexerWrapper::Information(
-                TokenInfo {
-                token: token,
-                line: line,
-                col: col
-            }))
-            Err(e) => vec.push(LexerError::Error(e)) // match e with LexerError, push error to vector
+            Ok(token) => vec.push(
+                LexResult {
+                    LexResultKind::Token(token),
+                    line,
+                    col,
+            }),
+            Err(e) => {
+                vec.push(
+                    LexResult {
+                        LexResultKind::Error(e),
+                        line,
+                        col,
+                }),
+                return vec;
+            }
         }
     }
+    vec
 }

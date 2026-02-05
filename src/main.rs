@@ -3,6 +3,8 @@ use compiler::cli::Args;
 use compiler::formatter;
 use compiler::io;
 use std::process;
+use logos::Logos;
+use crate::token::{tokenize, Token};
 
 fn main() {
     let args = Args::parse();
@@ -35,7 +37,7 @@ fn process_file(source_path: &str, output_dir: Option<&str>) -> Result<(), Strin
 
     // 2. Call Person A's lexer
     // Expected signature: pub fn lex(source: &str) -> Vec<TokenInfo>
-    let tokens = compiler::lexer::lex(&source);
+    let tokens = token::tokenize(&source);
 
     // 3. Format tokens
     let output = formatter::format_lexed_output(&tokens);
