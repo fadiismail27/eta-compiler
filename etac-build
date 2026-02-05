@@ -1,0 +1,12 @@
+#!/bin/bash
+# etac-build - Build script for the Eta compiler
+
+set -e
+
+# Build in release mode
+cargo build --release
+
+# Copy binary to project root so ./etac works
+cp target/release/etac ./etac
+
+echo "Build successful. Binary at: ./etac"
