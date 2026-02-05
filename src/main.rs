@@ -1,5 +1,8 @@
 use clap::Parser;
 use compiler::cli::Args;
+use compiler::formatter;
+use compiler::io;
+use std::process;
 
 fn main() {
     let args = Args::parse();
@@ -18,11 +21,32 @@ fn main() {
 
 fn run_lexer(args: &Args) {
     for source_file in &args.source_files {
-        println!("Would lex: {}", source_file);
-        // If the user provided an output directory, print it. 
-        // Unwrpas value and binds to dir 
-        if let Some(ref dir) = args.output_dir {
-            println!("  Output dir: {}", dir);
+        if let Err(e) = process_file(source_file, args.output_dir.as_deref()) {
+            eprintln!("Error processing {}: {}", source_file, e);
+            process::exit(1);
         }
     }
+}
+
+fn process_file(source_path: &str, output_dir: Option<&str>) -> Result<(), String> {
+    // 1. Read source file
+    let source = io::read_source_file(source_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    // 2. Call Person A's lexer
+    // Expected signature: pub fn lex(source: &str) -> Vec<TokenInfo>
+    let tokens = compiler::lexer::lex(&source);
+
+    // 3. Format tokens
+    let output = formatter::format_lexed_output(&tokens);
+
+    // 4. Compute output path
+    let output_path = io::compute_output_path(source_path, output_dir);
+
+    // 5. Write .lexed file
+    io::write_lexed_file(&output_path, &output)
+        .map_err(|e| format!("Failed to write output: {}", e))?;
+
+    println!("Lexed {} -> {}", source_path, output_path.display());
+    Ok(())
 }

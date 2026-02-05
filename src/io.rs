@@ -20,7 +20,9 @@ pub fn compute_output_path(source_path: &str, output_dir: Option<&str>) -> PathB
     match output_dir {
         Some(dir) => {
             // Preserve directory structure under output dir
-            Path::new(dir).join(parent).join(lexed_name)
+            // Strip leading / from parent if it's absolute
+            let relative_parent = parent.strip_prefix("/").unwrap_or(parent);
+            Path::new(dir).join(relative_parent).join(lexed_name)
         }
         None => {
             // Same directory as source
