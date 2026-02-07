@@ -1,9 +1,12 @@
 use clap::Parser;
-use ye38_compiler::cli::Args;
-use ye38_compiler::formatter;
-use ye38_compiler::io;
+mod cli;
+mod lexer;
+
+use cli::Args;
+use cli::formatter;
+use cli::io;
 use std::process;
-use ye38_compiler::token::{self, Token, LexerExtras};
+use lexer::{Token, LexerExtras};
 use logos::Logos;
 
 fn main() {
@@ -37,7 +40,7 @@ fn process_file(source_path: &str, output_dir: Option<&str>) -> Result<(), Strin
 
     // 2. Call lexer
     let mut lex = Token::lexer_with_extras(&source, LexerExtras::new());
-    let tokens = token::tokenize(&mut lex);
+    let tokens = lexer::tokenize(&mut lex);
 
     // 3. Format tokens
     let output = formatter::format_lexed_output(&tokens);

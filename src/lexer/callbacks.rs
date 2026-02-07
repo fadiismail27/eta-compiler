@@ -1,5 +1,5 @@
 use logos::{Lexer, Skip};
-use crate::token::{Token, LexerError};
+use crate::lexer::token::{Token, LexerError};
 
 pub fn newline_callback(lex: &mut Lexer<Token>) -> Skip {
     lex.extras.line += 1;

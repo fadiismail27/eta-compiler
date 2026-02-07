@@ -1,6 +1,6 @@
 use logos::{Logos, Lexer};
 use strum_macros::Display;
-use crate::callbacks::{newline_callback, comment_callback, lex_string, lex_char};
+use crate::lexer::callbacks::{newline_callback, comment_callback, lex_string, lex_char};
 
 #[derive(Debug, Logos, PartialEq, Display)]
 #[logos(error = LexerError)]

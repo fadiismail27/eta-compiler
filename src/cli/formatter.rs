@@ -1,4 +1,4 @@
-use crate::token::{LexResult, LexResultKind, Token, LexerError};
+use crate::lexer::{LexResult, LexResultKind, Token, LexerError};
 
 impl std::fmt::Display for LexerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
