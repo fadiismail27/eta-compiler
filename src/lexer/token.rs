@@ -14,6 +14,10 @@ pub enum Token {
     #[token("if")]
     If,
 
+    #[strum(serialize = "break")]
+    #[token("break")]
+    Break,
+
     #[strum(serialize = "while")]
     #[token("while")]
     While,
