@@ -9,8 +9,8 @@ pub type SpannedAST = Spanned<Program>; // i think i use like this...
 // carries no unique data, keep them bare.
 
 pub struct Program {
-    pub uses: Option<Vec<Token::Identifier>>, // uses is a vector of identifiers, when we pretty print, we precede them with "use"
-    pub definitions: Option<Vec<Definition>>,
+    pub uses: Vec<String>, // uses is a vector of identifiers, when we pretty print, we precede them with "use"
+    pub definitions: Vec<Definition>,
 }
 
 pub enum Definition { // toplevelitem in grammar
@@ -19,9 +19,9 @@ pub enum Definition { // toplevelitem in grammar
 }
 
 pub struct Method {
-    pub name: Token::Identifier,
-    pub declarations: Option<Vec<Declaration>>,
-    pub return_types: Option<Vec<Type>>,
+    pub name: String,
+    pub declarations: <Vec<Declaration>>,
+    pub return_types: <Vec<Type>>,
     pub block: Block,
 }
 
@@ -29,7 +29,7 @@ pub enum Type {
     // one of bool, int...
     Bool,
     Int,
-    // int[]... not recursive but i dont rlly get it ....
+    Array(Box<Type>),
 }
 
 pub struct Block {
@@ -56,7 +56,20 @@ pub enum Op {
     Lte,
     Gte,
 }
-
+pub enum Expr {
+    Literal(Literal),
+    Identifier(String),
+    Grouped(Box<Expr>),
+    Binary {
+        left: Box<Expr>,
+        op: Op,
+        right: Box<Expr>,
+    },
+    Unary {
+        op: Op,
+        right: Box<Expr>,
+    },
+}
 // expr
 pub struct Span {
     pub start: usize,  // byte offset
