@@ -3,9 +3,6 @@
 // spanning allows us to track the location of each node in the source code
 pub type SpannedAST = Spanned<Program>; // i think i use like this...
 
-// "when I match on this variant, do I need to extract any data from it?"
-// If yes, give it values. If every variant is interchangeable and
-// carries no unique data, keep them bare.
 pub struct Program {
     pub uses: Vec<String>, // uses is a vector of identifiers, when we pretty print, we precede them with "use"
     pub definitions: Vec<Definition>,
@@ -54,7 +51,6 @@ pub enum Stmt {
     Proc {id: String, args: Vec<Expr>} , // name and args i believe
 }
 
-// assignment can be a list of expressions, procedure calls, or types...
 pub enum BinaryOp {
     Add,
     Sub,
@@ -71,7 +67,6 @@ pub enum BinaryOp {
     Or,
 }
 
-// not sure how we wanna represent strings but fine rn...
 pub enum Literal {
     Int(i64),
     Bool(bool),
@@ -102,7 +97,6 @@ pub enum Expr {
     ArrayLit(Vec<Expr>),
 }
 
-// expr
 pub struct Span {
     pub start: usize,  // byte offset
     pub end: usize,
