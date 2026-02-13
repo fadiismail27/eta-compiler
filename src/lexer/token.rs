@@ -6,8 +6,8 @@ use crate::lexer::callbacks::{newline_callback, comment_callback, lex_string, le
 #[logos(error = LexerError)]
 #[logos(extras = LexerExtras)]
 #[logos(skip r"[ \t\r]+")]
-#[logos(skip(r"\n", newline_callback))]
-#[logos(skip(r"//[^\n]*?", comment_callback))]
+#[logos(skip(r"\r?\n", newline_callback))]
+#[logos(skip(r"//[^\n]*", comment_callback, allow_greedy=true))]
 pub enum Token {
     // Keywords
     #[strum(serialize = "if")]

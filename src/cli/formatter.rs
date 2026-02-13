@@ -49,6 +49,9 @@ fn escape_string(s: &str) -> String {
 
 /// Formats all tokens into the complete .lexed file content
 pub fn format_lexed_output(results: &[LexResult]) -> String {
+    if results.is_empty() {
+        return String::new();
+    }
     let mut output = results
         .iter()
         .map(format_result)
