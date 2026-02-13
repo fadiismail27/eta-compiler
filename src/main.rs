@@ -34,21 +34,16 @@ fn run_lexer(args: &Args) {
 }
 
 fn process_file(source_path: &str, output_dir: Option<&str>) -> Result<(), String> {
-    // 1. Read source file
     let source = io::read_source_file(source_path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
-    // 2. Call lexer
     let mut lex = Token::lexer_with_extras(&source, LexerExtras::new());
     let tokens = lexer::tokenize(&mut lex);
 
-    // 3. Format tokens
     let output = formatter::format_lexed_output(&tokens);
 
-    // 4. Compute output path
     let output_path = io::compute_output_path(source_path, output_dir);
 
-    // 5. Write .lexed file
     io::write_lexed_file(&output_path, &output)
         .map_err(|e| format!("Failed to write output: {}", e))?;
 

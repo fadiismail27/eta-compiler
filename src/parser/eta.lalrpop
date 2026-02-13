@@ -1,5 +1,3 @@
-
-
 use crate::ast::*;
 
 grammar;
@@ -59,7 +57,6 @@ extern {
     }
 }
 
-
 // Comma-separated list (0 or more)
 Comma<T>: Vec<T> = {
     <mut v: (<T> ",")*> <e: T?> => match e {
@@ -73,8 +70,7 @@ Comma1<T>: Vec<T> = {
     <mut v: (<T> ",")*> <e: T> => { v.push(e); v }
 };
 
- 
-// Program Structure 
+// Program Structure
 
 pub Program: Program = {
     <uses: UseDecl*> <items: TopLevelItem*> => Program { uses, items },
@@ -117,7 +113,6 @@ ReturnTypes: Vec<Type> = {
     ":" <Comma1<Type>>,
 };
 
-
 Type: Type = {
     BaseType,
     <t: Type> "[" "]" => Type::Array(Box::new(t)),
@@ -128,16 +123,14 @@ BaseType: Type = {
     "bool" => Type::Bool,
 };
 
-
 Stmt: Stmt = {
     MatchedIf,
     UnmatchedIf,
-
 };
 
 // BIG UP MYERS FOR THE NOTES ON DANGLING ELSE!!!!
 MatchedIf: Stmt = {
-    "if" <g:Expr> <then:MatchedIf> "else" <els:MatchedIf> 
+    "if" <g:Expr> <then:MatchedIf> "else" <els:MatchedIf>
         => Stmt::If(g, then, Some(els)),
 
     "while" <g:Expr> <body:MatchedIf> => Stmt::While(g, body),
@@ -146,7 +139,7 @@ MatchedIf: Stmt = {
 
 UnmatchedIf: Stmt = {
     "if" <g:Expr> <then:Stmt> => Stmt::If(g, then, None),
-    "if" <g:Expr> <then:MatchedIf> "else" <els:UnmatchedIf> 
+    "if" <g:Expr> <then:MatchedIf> "else" <els:UnmatchedIf>
         => Stmt::If(g, then, Some(els)),
 
 
@@ -158,7 +151,7 @@ AtomicStmt: Stmt = {
     Block => Stmt::Block(<>),
 
     // Discard assignment: _ = expr
-    "_" "=" <e: Expr> 
+    "_" "=" <e: Expr>
         => Stmt::Assign(vec![AssignTarget::Discard], vec![e]),
 
     // Multi-discard: _, x = expr
@@ -171,7 +164,7 @@ AtomicStmt: Stmt = {
 
     // Identifier-start statements (Assignments, Calls, Decls)
     // Delegated to IdentStmtRest to avoid left-recursion conflicts
-    <name: IDENT> <rest: IdentStmtRest> 
+    <name: IDENT> <rest: IdentStmtRest>
         => rest.into_stmt(name),
 };
 
@@ -188,19 +181,18 @@ ReturnStmt: Vec<Expr> = {
     "return" <Comma<Expr>> ";"? => <>,
 };
 
-
 // After seeing IDENT at the start of a statement, what comes next?
 IdentStmtRest: IdentStmtRest = {
     // Procedure call: f(args)
-    "(" <args: Comma<Expr>> ")" 
+    "(" <args: Comma<Expr>> ")"
         => IdentStmtRest::ProcCall(args),
 
     // Simple assignment: x = e
-    "=" <e: Expr> 
+    "=" <e: Expr>
         => IdentStmtRest::Assign(e),
 
     // Array assignment: x[i] = e
-    <indices: ("[" <Expr> "]")+> "=" <e: Expr> 
+    <indices: ("[" <Expr> "]")+> "=" <e: Expr>
         => IdentStmtRest::ArrayAssign(indices, e),
 
     // We handle Simple Decl, Sized Array Decl, Init Decl, AND Multi-Decl here.
@@ -210,13 +202,13 @@ IdentStmtRest: IdentStmtRest = {
     },
 
     // Multi-assign starting with plain var (No type): x, y = ...
-    "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>> 
+    "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>>
         => IdentStmtRest::MultiAssign(rest, vals),
 
     // Multi-assign starting with array index: x[i], y = ...
-    <indices: ("[" <Expr> "]")+> "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>> 
+    <indices: ("[" <Expr> "]")+> "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>>
         => IdentStmtRest::MultiArrayAssign(indices, rest, vals),
-    
+
     // Function that returns mutable arr: f(x)[i]
     "(" <args: Comma<Expr>> ")" <indices: ("[" <Expr> "]")+> "=" <e: Expr>
         => IdentStmtRest::CallIndexAssign(args, indices, e),
@@ -224,6 +216,7 @@ IdentStmtRest: IdentStmtRest = {
 
 // Consumes any sequence of brackets: [] [5] [n] ...
 // Returns a list where None = [] and Some(e) = [e]
+
 ArrayDimList: Vec<Option<Expr>> = {
     <d:ArrayDim*> => d,
 };
@@ -236,7 +229,7 @@ ArrayDim: Option<Expr> = {
 ValidArrayDims: Vec<Option<Expr>> = {
     // Case 1: All empty (int[][]) or No dims (int)
     <empty: ("[" "]")*> => vec![None; empty.len()],
-    
+
     // Case 2: Mixed (int[3][4][][]) - Filled MUST precede Empty
     <filled: ("[" <Expr> "]")+> <empty: ("[" "]")*> => {
         let mut dims: Vec<Option<Expr>> = filled.into_iter().map(Some).collect();
@@ -254,7 +247,7 @@ DeclSuffix: DeclSuffix = {
     "=" <e: Expr> => DeclSuffix::Init(e),
 
     // 3. Multi-Declaration (x: int, y = 5)
-    "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>> 
+    "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>>
         => DeclSuffix::Multi(rest, vals),
 };
 
@@ -314,8 +307,8 @@ PostfixExpr: Expr = {
 
     AtomExpr,
 };
- 
-// Atoms 
+
+// Atoms
 
 AtomExpr: Expr = {
     // Literals
@@ -343,8 +336,8 @@ Literal: Expr = {
     "true"               => Expr::BoolLit(true),
     "false"              => Expr::BoolLit(false),
 };
- 
-// Interface files (.eti) 
+
+// Interface files (.eti)
 
 pub Interface: Interface = {
     <decls: InterfaceDecl+> => Interface { decls },
