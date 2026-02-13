@@ -18,12 +18,12 @@ pub enum Definition { // a definition is a method or a global declaration
 
 pub struct Method { // a method is a function, with a name, parameters, return types, and a block
     pub id: String,
-    pub declarations: Vec<Declaration>, // a parameter in a function..., no initialization
+    pub params: Vec<Param>, // a parameter in a function..., no initialization
     pub return_tys: Vec<Type>,
     pub block: Block,
 }
 
-pub struct Declaration {
+pub struct Param {
     pub id: String,
     pub ty: Type,
 }
@@ -48,7 +48,7 @@ pub enum Stmt {
     Expression(Expr),
     VarDecl(DeclData),
     Assignment {lhs: Expr, rhs: Expr}, // assign only works for existing types
-    If {cond: Expr, then_block: Block, else: Option<Block>}, // can Optionally be chained with an else
+    If {cond: Expr, then_block: Block, else_block: Option<Block>}, // can Optionally be chained with an else
     While {cond: Expr, body: Block}, // should just contain an expression i think...
     Return(Vec<Expr>), // list of expressions
     Proc {id: String, args: Vec<Expr>} , // name and args i believe
@@ -67,6 +67,8 @@ pub enum BinaryOp {
     Gt,
     Lte,
     Gte,
+    And,
+    Or,
 }
 
 // not sure how we wanna represent strings but fine rn...
