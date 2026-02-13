@@ -35,6 +35,7 @@ pub fn lex_char(lex: &mut Lexer<Token>) -> Result<char, LexerError> {
             match chars.next() {
                 None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
                 Some('n') => { consumed += 1; '\n' }
+                Some('t') => { consumed += 1; '\t' }
                 Some('\'') => { consumed += 1; '\'' }
                 Some('\\') => { consumed += 1; '\\' }
                 Some('"') => { consumed += 1; '"' }
@@ -95,6 +96,7 @@ pub fn lex_string(lex: &mut Lexer<Token>) -> Result<String, LexerError> {
                 match chars.next() {
                     None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
                     Some('n') => { consumed += 1; result.push('\n'); }
+                    Some('t') => { consumed += 1; result.push('\t'); }
                     Some('\'') => { consumed += 1; result.push('\''); }
                     Some('\\') => { consumed += 1; result.push('\\'); }
                     Some('"') => { consumed += 1; result.push('"'); }

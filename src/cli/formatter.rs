@@ -38,7 +38,7 @@ fn escape_char(c: char) -> String {
         '\t' => "\\t".to_string(),
         '\r' => "\\r".to_string(),
         '\\' => "\\\\".to_string(),
-        c if c.is_ascii_graphic() || c == ' ' => c.to_string(),
+        c if !c.is_control() => c.to_string(),
         c => format!("\\x{{{:X}}}", c as u32),
     }
 }
