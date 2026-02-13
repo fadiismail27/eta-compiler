@@ -13,7 +13,7 @@ pub struct Program {
 
 pub enum Definition { // a definition is a method or a global declaration
     Method(Method),
-    GlobalDeclaration(Declaration),
+    Global(DeclData),
 }
 
 pub struct Method { // a method is a function, with a name, parameters, return types, and a block
@@ -28,8 +28,7 @@ pub struct Declaration {
     pub ty: Type,
 }
 
-// i think this can also be applied to declarations within a method, which are 'global' in that scope
-pub struct GlobalDeclaration {
+pub struct DeclData {
     pub id: String,
     pub ty: Type,
     pub init: Option<Expr>,
@@ -47,8 +46,8 @@ pub struct Block {
 
 pub enum Stmt {
     Expression(Expr),
-    Declaration(Declaration),
-    Assignment(Assignment),
+    VarDecl(DeclData),
+    Assignment {lhs: Expr, rhs: Expr}, // assign only works for existing types
     If {cond: Expr, then_block: Block, else: Option<Block>}, // can Optionally be chained with an else
     While {cond: Expr, body: Block}, // should just contain an expression i think...
     Return(Vec<Expr>), // list of expressions
@@ -87,7 +86,6 @@ pub enum UnaryOp {
 pub enum Expr {
     Literal(Literal),
     Identifier(String),
-    Grouped(Box<Expr>), // ?
     Binary {
         left: Box<Expr>,
         op: BinaryOp,
@@ -97,6 +95,9 @@ pub enum Expr {
         op: UnaryOp,
         right: Box<Expr>,
     },
+    FuncCall { id: String, args: Vec<Expr> },
+    ArrayIndex { array: Box<Expr>, index: Box<Expr> },
+    ArrayLit(Vec<Expr>),
 }
 
 // expr
