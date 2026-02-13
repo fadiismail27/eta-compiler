@@ -1,4 +1,3 @@
-use crate::lexer::Token;
 // snake case for everything other than enums and structs
 
 // spanning allows us to track the location of each node in the source code
@@ -7,29 +6,39 @@ pub type SpannedAST = Spanned<Program>; // i think i use like this...
 // "when I match on this variant, do I need to extract any data from it?"
 // If yes, give it values. If every variant is interchangeable and
 // carries no unique data, keep them bare.
-
 pub struct Program {
     pub uses: Vec<String>, // uses is a vector of identifiers, when we pretty print, we precede them with "use"
     pub definitions: Vec<Definition>,
 }
 
-pub enum Definition { // toplevelitem in grammar
+pub enum Definition { // a definition is a method or a global declaration
     Method(Method),
     GlobalDeclaration(Declaration),
 }
 
-pub struct Method {
-    pub name: String,
-    pub declarations: <Vec<Declaration>>,
+pub struct Method { // a method is a function, with a name, parameters, return types, and a block
+    pub id: String,
+    pub declarations: <Vec<Declaration>>, // a parameter in a function..., no initialization
     pub return_types: <Vec<Type>>,
     pub block: Block,
 }
 
+pub struct Declaration {
+    pub id: String,
+    pub type: Type,
+}
+
+// i think this can also be applied to declarations within a method, which are 'global' in that scope
+pub struct GlobalDeclaration {
+    pub id: String,
+    pub type: Type,
+    pub init: Optional<Expr>,
+}
+
 pub enum Type {
-    // one of bool, int...
     Bool,
     Int,
-    Array(Box<Type>),
+    Array(Box<Type>), // pretty sure this should only really be Box<Int>...
 }
 
 pub struct Block {
@@ -37,12 +46,24 @@ pub struct Block {
 }
 
 pub enum Stmt {
-    Expression(Expression),
+    Expression(Expr),
     Declaration(Declaration),
     Assignment(Assignment),
-    //
+    If {expr: Expr, else: Optional<Else>}, // can optionally be chained with an else
+    While(While), // should just contain an expression i think...
+    Return(Vec<Expr>), // list of expressions
+    Proc {id: String, args: Vec<Arg>} , // name and args i believe
 }
 
+// a single argument passed to a function can be a literal, an identifier, or an expression
+pub enum Arg {
+    Literal(Literal),
+    Identifier(String),
+    Expr(Expr)
+}
+
+// assignment can be a list of expressions, procedure calls, or types...
+// tf ...
 pub enum Op {
     Add,
     Sub,
@@ -56,10 +77,12 @@ pub enum Op {
     Lte,
     Gte,
 }
+
+// expressions can exist after an equals sign, after an if / while statement...
 pub enum Expr {
     Literal(Literal),
     Identifier(String),
-    Grouped(Box<Expr>),
+    Grouped(Box<Expr>), // ?
     Binary {
         left: Box<Expr>,
         op: Op,
@@ -70,6 +93,7 @@ pub enum Expr {
         right: Box<Expr>,
     },
 }
+
 // expr
 pub struct Span {
     pub start: usize,  // byte offset
@@ -79,8 +103,4 @@ pub struct Span {
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
-}
-
-pub struct Argument {
-
 }
