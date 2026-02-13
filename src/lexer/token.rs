@@ -173,7 +173,7 @@ pub enum Token {
     Identifier(String),
 
     #[strum(serialize = "integer")]
-    #[regex(r"[0-9]+", |lex| lex.slice().parse().ok())]
+    #[regex(r"0|[1-9][0-9]*", |lex| lex.slice().parse().ok())]
     Integer(u64),
 
     #[strum(serialize = "string")]
