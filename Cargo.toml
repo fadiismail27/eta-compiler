@@ -10,9 +10,13 @@ edition = "2024"
 name = "etac"
 path = "src/main.rs"
 
+[build-dependencies] 
+lalrpop = "0.22.2"
+
 [dependencies]
 logos = "0.16.1"
 regex = "1.12.3"
 clap = { version = "4", features = ["derive"] }
 strum = { version = "0.26", features = ["derive"] }
 strum_macros = "0.26"
+lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }

@@ -1,0 +1,356 @@
+
+
+use crate::ast::*;
+
+grammar;
+
+extern {
+    type Location = usize;
+    type Error = String;
+
+    enum Token {
+        // Keywords
+        "use"    => Token::Use,
+        "if"     => Token::If,
+        "else"   => Token::Else,
+        "while"  => Token::While,
+        "return" => Token::Return,
+        "length" => Token::Length,
+        "int"    => Token::IntType,
+        "bool"   => Token::BoolType,
+        "true"   => Token::True,
+        "false"  => Token::False,
+
+        // Symbols
+        "("  => Token::LParen,
+        ")"  => Token::RParen,
+        "["  => Token::LBracket,
+        "]"  => Token::RBracket,
+        "{"  => Token::LBrace,
+        "}"  => Token::RBrace,
+        ":"  => Token::Colon,
+        ";"  => Token::Semicolon,
+        ","  => Token::Comma,
+        "="  => Token::Assign,
+        "_"  => Token::Underscore,
+
+        // Operators
+        "+"   => Token::Plus,
+        "-"   => Token::Minus,
+        "*"   => Token::Mul,
+        "*>>" => Token::HighMul,
+        "/"   => Token::Div,
+        "%"   => Token::Mod,
+        "!"   => Token::Not,
+        "<"   => Token::Lt,
+        "<="  => Token::Le,
+        ">"   => Token::Gt,
+        ">="  => Token::Ge,
+        "=="  => Token::Eq,
+        "!="  => Token::Ne,
+        "&"   => Token::And,
+        "|"   => Token::Or,
+
+        // Data-carrying tokens
+        IDENT      => Token::Identifier(<String>),
+        INT_LIT    => Token::IntLiteral(<i64>),
+        CHAR_LIT   => Token::CharLiteral(<i64>),
+        STRING_LIT => Token::StringLiteral(<String>),
+    }
+}
+
+
+// Comma-separated list (0 or more)
+Comma<T>: Vec<T> = {
+    <mut v: (<T> ",")*> <e: T?> => match e {
+        Some(e) => { v.push(e); v },
+        None => v,
+    }
+};
+
+// Comma-separated list (1 or more)
+Comma1<T>: Vec<T> = {
+    <mut v: (<T> ",")*> <e: T> => { v.push(e); v }
+};
+
+ 
+// Program Structure 
+
+pub Program: Program = {
+    <uses: UseDecl*> <items: TopLevelItem*> => Program { uses, items },
+};
+
+UseDecl: String = {
+    "use" <IDENT> ";"? => <>,
+};
+
+TopLevelItem: TopLevelItem = {
+    FuncDef    => TopLevelItem::Func(<>),
+    GlobalDecl => TopLevelItem::Global(<>),
+};
+
+GlobalDecl: GlobalDecl = {
+    <name: IDENT> ":" <ty: Type> ";"?
+        => GlobalDecl { name, ty, init: None },
+
+    <name: IDENT> ":" <ty: Type> "=" <e: Literal> ";"?
+        => GlobalDecl { name, ty, init: Some(e) },
+};
+
+// Function Definitions
+
+FuncDef: FuncDef = {
+    <name: IDENT> "(" <params: Comma<Param>> ")" <ret: ReturnTypes?> <body: Block>
+        => FuncDef {
+            name,
+            params,
+            returns: ret.unwrap_or_default(),
+            body,
+        },
+};
+
+Param: Param = {
+    <name: IDENT> ":" <ty: Type> => Param { name, ty },
+};
+
+ReturnTypes: Vec<Type> = {
+    ":" <Comma1<Type>>,
+};
+
+
+Type: Type = {
+    BaseType,
+    <t: Type> "[" "]" => Type::Array(Box::new(t)),
+};
+
+BaseType: Type = {
+    "int"  => Type::Int,
+    "bool" => Type::Bool,
+};
+
+
+Stmt: Stmt = {
+    MatchedIf,
+    UnmatchedIf,
+
+};
+
+// BIG UP MYERS FOR THE NOTES ON DANGLING ELSE!!!!
+MatchedIf: Stmt = {
+    "if" <g:Expr> <then:MatchedIf> "else" <els:MatchedIf> 
+        => Stmt::If(g, then, Some(els)),
+
+    "while" <g:Expr> <body:MatchedIf> => Stmt::While(g, body),
+    AtomicStmt,
+};
+
+UnmatchedIf: Stmt = {
+    "if" <g:Expr> <then:Stmt> => Stmt::If(g, then, None),
+    "if" <g:Expr> <then:MatchedIf> "else" <els:UnmatchedIf> 
+        => Stmt::If(g, then, Some(els)),
+
+
+    "while" <g:Expr> <body:UnmatchedIf> => Stmt::While(g, body),
+};
+
+AtomicStmt: Stmt = {
+    // Blocks are always safe because '}' closes them
+    Block => Stmt::Block(<>),
+
+    // Discard assignment: _ = expr
+    "_" "=" <e: Expr> 
+        => Stmt::Assign(vec![AssignTarget::Discard], vec![e]),
+
+    // Multi-discard: _, x = expr
+    "_" "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>>
+        => {
+            let mut targets = vec![AssignTarget::Discard];
+            targets.extend(rest);
+            Stmt::Assign(targets, vals)
+        },
+
+    // Identifier-start statements (Assignments, Calls, Decls)
+    // Delegated to IdentStmtRest to avoid left-recursion conflicts
+    <name: IDENT> <rest: IdentStmtRest> 
+        => rest.into_stmt(name),
+};
+
+Block: Block = {
+    "{" <stmts: StmtList> "}" => stmts,
+};
+
+StmtList: Block = {
+    <stmts: (Stmt ";"?)*> <ret: ReturnStmt?>
+        => Block { stmts, return_val: ret },
+};
+
+ReturnStmt: Vec<Expr> = {
+    "return" <Comma<Expr>> ";"? => <>,
+};
+
+
+// After seeing IDENT at the start of a statement, what comes next?
+IdentStmtRest: IdentStmtRest = {
+    // Procedure call: f(args)
+    "(" <args: Comma<Expr>> ")" 
+        => IdentStmtRest::ProcCall(args),
+
+    // Simple assignment: x = e
+    "=" <e: Expr> 
+        => IdentStmtRest::Assign(e),
+
+    // Array assignment: x[i] = e
+    <indices: ("[" <Expr> "]")+> "=" <e: Expr> 
+        => IdentStmtRest::ArrayAssign(indices, e),
+
+    // We handle Simple Decl, Sized Array Decl, Init Decl, AND Multi-Decl here.
+    // We parse ": BaseType [dims...]" first, effectively delaying the decision.
+    ":" <base: BaseType> <dims: ValidArrayDims> <suffix: DeclSuffix> => {
+         IdentStmtRest::UnifiedDecl(base, dims, suffix)
+    },
+
+    // Multi-assign starting with plain var (No type): x, y = ...
+    "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>> 
+        => IdentStmtRest::MultiAssign(rest, vals),
+
+    // Multi-assign starting with array index: x[i], y = ...
+    <indices: ("[" <Expr> "]")+> "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>> 
+        => IdentStmtRest::MultiArrayAssign(indices, rest, vals),
+    
+    // Function that returns mutable arr: f(x)[i]
+    "(" <args: Comma<Expr>> ")" <indices: ("[" <Expr> "]")+> "=" <e: Expr>
+        => IdentStmtRest::CallIndexAssign(args, indices, e),
+};
+
+// Consumes any sequence of brackets: [] [5] [n] ...
+// Returns a list where None = [] and Some(e) = [e]
+ArrayDimList: Vec<Option<Expr>> = {
+    <d:ArrayDim*> => d,
+};
+
+ArrayDim: Option<Expr> = {
+    "[" "]" => None,
+    "[" <e:Expr> "]" => Some(e),
+};
+
+ValidArrayDims: Vec<Option<Expr>> = {
+    // Case 1: All empty (int[][]) or No dims (int)
+    <empty: ("[" "]")*> => vec![None; empty.len()],
+    
+    // Case 2: Mixed (int[3][4][][]) - Filled MUST precede Empty
+    <filled: ("[" <Expr> "]")+> <empty: ("[" "]")*> => {
+        let mut dims: Vec<Option<Expr>> = filled.into_iter().map(Some).collect();
+        dims.extend(empty.into_iter().map(|_| None));
+        dims
+    }
+};
+
+// Handles what comes AFTER the type definition
+DeclSuffix: DeclSuffix = {
+    // 1. Simple Declaration (Ends with semicolon/EOF)
+    => DeclSuffix::None,
+
+    // 2. Initialization (x: int = 5)
+    "=" <e: Expr> => DeclSuffix::Init(e),
+
+    // 3. Multi-Declaration (x: int, y = 5)
+    "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>> 
+        => DeclSuffix::Multi(rest, vals),
+};
+
+LhsItem: AssignTarget = {
+    "_" => AssignTarget::Discard,
+    <name: IDENT> => AssignTarget::Var(name),
+    <name: IDENT> ":" <ty: Type> => AssignTarget::Decl(name, ty),
+    <name: IDENT> <indices: ("[" <Expr> "]")+> => AssignTarget::ArrayIndex(name, indices),
+};
+
+
+Expr: Expr = {
+    #[precedence(level="0")]
+    PostfixExpr,
+
+    #[precedence(level="1")]
+    "-" <e: Expr> => Expr::UnaryOp(UnaryOp::Neg, Box::new(e)),
+    "!" <e: Expr> => Expr::UnaryOp(UnaryOp::Not, Box::new(e)),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    <l:Expr> "*"   <r:Expr> => Expr::BinOp(BinOp::Mul, Box::new(l), Box::new(r)),
+    <l:Expr> "*>>" <r:Expr> => Expr::BinOp(BinOp::HighMul, Box::new(l), Box::new(r)),
+    <l:Expr> "/"   <r:Expr> => Expr::BinOp(BinOp::Div, Box::new(l), Box::new(r)),
+    <l:Expr> "%"   <r:Expr> => Expr::BinOp(BinOp::Mod, Box::new(l), Box::new(r)),
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    <l:Expr> "+" <r:Expr> => Expr::BinOp(BinOp::Add, Box::new(l), Box::new(r)),
+    <l:Expr> "-" <r:Expr> => Expr::BinOp(BinOp::Sub, Box::new(l), Box::new(r)),
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l:Expr> "<"  <r:Expr> => Expr::BinOp(BinOp::Lt, Box::new(l), Box::new(r)),
+    <l:Expr> "<=" <r:Expr> => Expr::BinOp(BinOp::Le, Box::new(l), Box::new(r)),
+    <l:Expr> ">"  <r:Expr> => Expr::BinOp(BinOp::Gt, Box::new(l), Box::new(r)),
+    <l:Expr> ">=" <r:Expr> => Expr::BinOp(BinOp::Ge, Box::new(l), Box::new(r)),
+
+    #[precedence(level="5")] #[assoc(side="left")]
+    <l:Expr> "==" <r:Expr> => Expr::BinOp(BinOp::Eq, Box::new(l), Box::new(r)),
+    <l:Expr> "!=" <r:Expr> => Expr::BinOp(BinOp::Ne, Box::new(l), Box::new(r)),
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    <l:Expr> "&" <r:Expr> => Expr::BinOp(BinOp::And, Box::new(l), Box::new(r)),
+
+    #[precedence(level="7")] #[assoc(side="left")]
+    <l:Expr> "|" <r:Expr> => Expr::BinOp(BinOp::Or, Box::new(l), Box::new(r)),
+};
+
+// Postfix: function calls and array indexing (left-associative)
+PostfixExpr: Expr = {
+    <arr: PostfixExpr> "[" <idx: Expr> "]"
+        => Expr::Index(Box::new(arr), Box::new(idx)),
+
+    <func: IDENT> "(" <args: Comma<Expr>> ")"
+        => Expr::FuncCall(func, args),
+
+    "length" "(" <e: Expr> ")"
+        => Expr::Length(Box::new(e)),
+
+    AtomExpr,
+};
+ 
+// Atoms 
+
+AtomExpr: Expr = {
+    // Literals
+    INT_LIT    => Expr::IntLit(<>),
+    CHAR_LIT   => Expr::CharLit(<>),
+    STRING_LIT => Expr::StringLit(<>),
+    "true"     => Expr::BoolLit(true),
+    "false"    => Expr::BoolLit(false),
+
+    // Variable reference
+    IDENT => Expr::Var(<>),
+
+    // Parenthesized expression
+    "(" <Expr> ")",
+
+    // Array constructor: { e1, e2, ... }
+    "{" <elems: Comma<Expr>> "}" => Expr::ArrayConstructor(elems),
+};
+
+// Literal (used for global variable initializers)
+Literal: Expr = {
+    INT_LIT              => Expr::IntLit(<>),
+    "-" <n: INT_LIT>     => Expr::IntLit(-n),
+    CHAR_LIT             => Expr::CharLit(<>),
+    "true"               => Expr::BoolLit(true),
+    "false"              => Expr::BoolLit(false),
+};
+ 
+// Interface files (.eti) 
+
+pub Interface: Interface = {
+    <decls: InterfaceDecl+> => Interface { decls },
+};
+
+InterfaceDecl: InterfaceDecl = {
+    <name: IDENT> "(" <params: Comma<Param>> ")" <ret: ReturnTypes?> ";"?
+        => InterfaceDecl { name, params, returns: ret.unwrap_or_default() },
+};
