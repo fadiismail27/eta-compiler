@@ -210,15 +210,20 @@ pub enum LexResultKind {
     Error(LexerError)
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+impl Default for LexerError {
+    fn default() -> Self {
+        LexerError::InvalidCharacter(0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum LexerError {
-    #[default]
-    InvalidCharacter,
-    UnterminatedLiteral,    // Hit newline or EOF
-    InvalidEscape,          // e.g., \q
-    InvalidHex,             // e.g., \x{GG}
-    EmptyCharacter,
-    MultiCharacterConstant,
+    InvalidCharacter(usize),
+    UnterminatedLiteral(usize),    // Hit newline or EOF
+    InvalidEscape(usize),          // e.g., \q
+    InvalidHex(usize),             // e.g., \x{GG}
+    EmptyCharacter(usize),
+    MultiCharacterConstant(usize),
 }
 
 // lex the list, when you match, push the TokenInfo to the vector, or return error
@@ -227,8 +232,21 @@ pub fn tokenize(lex: &mut Lexer<Token>) -> Vec<LexResult> {
 
     while let Some(result) = lex.next() {
         let line = lex.extras.line;
-        let col = lex.span().start - lex.extras.line_start + 1;
+        let mut byte_pos = lex.span().start;
+
+        if let Err(e) = &result {
+            match e {
+                LexerError::InvalidCharacter(offset) => byte_pos += offset,
+                LexerError::UnterminatedLiteral(offset) => byte_pos += offset,
+                LexerError::InvalidEscape(offset) => byte_pos += offset,
+                LexerError::InvalidHex(offset) => byte_pos += offset,
+                LexerError::EmptyCharacter(offset) => byte_pos += offset,
+                LexerError::MultiCharacterConstant(offset) => byte_pos += offset,
+            }
+        }
+        let col = byte_pos - lex.extras.line_start + 1;
         lex.extras.has_token = true;
+
 
         match result {
             Ok(token) => vec.push(

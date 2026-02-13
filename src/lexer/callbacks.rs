@@ -24,16 +24,16 @@ pub fn lex_char(lex: &mut Lexer<Token>) -> Result<char, LexerError> {
     
     // Parse the content until closing quote
     let result = match chars.next() {
-        None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+        None | Some('\n') => return Err(LexerError::UnterminatedLiteral(consumed)),
         Some('\'') => {
             consumed += 1;
             lex.bump(consumed);
-            return Err(LexerError::EmptyCharacter);
+            return Err(LexerError::EmptyCharacter(consumed));
         }
         Some('\\') => {
             consumed += 1;
             match chars.next() {
-                None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                None | Some('\n') => return Err(LexerError::UnterminatedLiteral(consumed)),
                 Some('n') => { consumed += 1; '\n' }
                 Some('t') => { consumed += 1; '\t' }
                 Some('\'') => { consumed += 1; '\'' }
@@ -42,21 +42,21 @@ pub fn lex_char(lex: &mut Lexer<Token>) -> Result<char, LexerError> {
                 Some('x') => {
                     consumed += 1;
                     if chars.next() != Some('{') {
-                        return Err(LexerError::InvalidEscape);
+                        return Err(LexerError::InvalidEscape(consumed));
                     }
                     consumed += 1;
                     let mut hex = String::new();
                     loop {
                         match chars.next() {
-                            None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                            None | Some('\n') => return Err(LexerError::UnterminatedLiteral(consumed)),
                             Some('}') => { consumed += 1; break; }
                             Some(c) => { consumed += c.len_utf8(); hex.push(c); }
                         }
                     }
-                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidHex)?;
-                    char::from_u32(code).ok_or(LexerError::InvalidHex)?
+                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidHex(consumed))?;
+                    char::from_u32(code).ok_or(LexerError::InvalidHex(consumed))?
                 }
-                _ => return Err(LexerError::InvalidEscape),
+                _ => return Err(LexerError::InvalidEscape(consumed)),
             }
         }
         Some(c) => {
@@ -72,8 +72,8 @@ pub fn lex_char(lex: &mut Lexer<Token>) -> Result<char, LexerError> {
             lex.bump(consumed);
             Ok(result)
         }
-        Some('\n') | None => Err(LexerError::UnterminatedLiteral),
-        Some(_) => Err(LexerError::MultiCharacterConstant),
+        Some('\n') | None => Err(LexerError::UnterminatedLiteral(consumed)),
+        Some(_) => Err(LexerError::MultiCharacterConstant(consumed)),
     }
 }
 
@@ -85,7 +85,7 @@ pub fn lex_string(lex: &mut Lexer<Token>) -> Result<String, LexerError> {
 
     loop {
         match chars.next() {
-            None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+            None | Some('\n') => return Err(LexerError::UnterminatedLiteral(consumed)),
             Some('"') => {
                 consumed += 1;
                 lex.bump(consumed);
@@ -94,7 +94,7 @@ pub fn lex_string(lex: &mut Lexer<Token>) -> Result<String, LexerError> {
             Some('\\') => {
                 consumed += 1;
                 match chars.next() {
-                    None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                    None | Some('\n') => return Err(LexerError::UnterminatedLiteral(consumed)),
                     Some('n') => { consumed += 1; result.push('\n'); }
                     Some('t') => { consumed += 1; result.push('\t'); }
                     Some('\'') => { consumed += 1; result.push('\''); }
@@ -103,22 +103,22 @@ pub fn lex_string(lex: &mut Lexer<Token>) -> Result<String, LexerError> {
                     Some('x') => {
                         consumed += 1;
                         if chars.next() != Some('{') {
-                            return Err(LexerError::InvalidEscape);
+                            return Err(LexerError::InvalidEscape(consumed));
                         }
                         consumed += 1;
                         let mut hex = String::new();
                         loop {
                             match chars.next() {
-                                None | Some('\n') => return Err(LexerError::UnterminatedLiteral),
+                                None | Some('\n') => return Err(LexerError::UnterminatedLiteral(consumed)),
                                 Some('}') => { consumed += 1; break; }
                                 Some(c) => { consumed += c.len_utf8(); hex.push(c); }
                             }
                         }
-                        let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidHex)?;
-                        let uchar = char::from_u32(code).ok_or(LexerError::InvalidHex)?;
+                        let code = u32::from_str_radix(&hex, 16).map_err(|_| LexerError::InvalidHex(consumed))?;
+                        let uchar = char::from_u32(code).ok_or(LexerError::InvalidHex(consumed))?;
                         result.push(uchar);
                     }
-                    _ => return Err(LexerError::InvalidEscape),
+                    _ => return Err(LexerError::InvalidEscape(consumed)),
                 }
             }
             Some(c) => {

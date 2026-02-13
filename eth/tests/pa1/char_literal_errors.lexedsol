@@ -2,4 +2,4 @@
 2:5 :
 2:6 int
 2:9 =
-2:10 error:multi-character literal
+2:11 error:Multi-Character Literal
