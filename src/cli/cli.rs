@@ -8,6 +8,10 @@ pub struct Args {
     #[arg(long = "lex")]
     pub lex: bool,
 
+    /// Generate parser output
+    #[arg(long = "parse")]
+    pub parse: bool,
+
     /// Specify output directory for generated files
     #[arg(short = 'D', value_name = "PATH")]
     pub output_dir: Option<String>,
