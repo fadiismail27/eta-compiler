@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::parser::ast::*;
 
 grammar;
 
@@ -131,19 +131,18 @@ Stmt: Stmt = {
 // BIG UP MYERS FOR THE NOTES ON DANGLING ELSE!!!!
 MatchedIf: Stmt = {
     "if" <g:Expr> <then:MatchedIf> "else" <els:MatchedIf>
-        => Stmt::If(g, then, Some(els)),
+        => Stmt::If(g, Box::new(then), Some(Box::new(els))),
 
-    "while" <g:Expr> <body:MatchedIf> => Stmt::While(g, body),
+    "while" <g:Expr> <body:MatchedIf> => Stmt::While(g, Box::new(body)),
     AtomicStmt,
 };
 
 UnmatchedIf: Stmt = {
-    "if" <g:Expr> <then:Stmt> => Stmt::If(g, then, None),
+    "if" <g:Expr> <then:Stmt> => Stmt::If(g, Box::new(then), None),
     "if" <g:Expr> <then:MatchedIf> "else" <els:UnmatchedIf>
-        => Stmt::If(g, then, Some(els)),
+        => Stmt::If(g, Box::new(then), Some(Box::new(els))),
 
-
-    "while" <g:Expr> <body:UnmatchedIf> => Stmt::While(g, body),
+    "while" <g:Expr> <body:UnmatchedIf> => Stmt::While(g, Box::new(body)),
 };
 
 AtomicStmt: Stmt = {
@@ -173,7 +172,7 @@ Block: Block = {
 };
 
 StmtList: Block = {
-    <stmts: (Stmt ";"?)*> <ret: ReturnStmt?>
+    <stmts: (<Stmt> ";"?)*> <ret: ReturnStmt?>
         => Block { stmts, return_val: ret },
 };
 
