@@ -16,6 +16,10 @@ pub struct Args {
     #[arg(short = 'D', value_name = "PATH")]
     pub output_dir: Option<String>,
 
+    /// Specify where to find input source files
+    #[arg(long = "sourcepath", value_name = "PATH")]
+    pub source_path: Option<String>,
+
     /// Source files to process (.eta or .eti)
     #[arg(required = false)]
     pub source_files: Vec<String>,

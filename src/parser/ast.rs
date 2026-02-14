@@ -87,7 +87,9 @@ pub struct Param {
 pub enum Type {
     Int,
     Bool,
-    Array(Box<Type>),
+    /// `Array(element_type, optional_size)`.
+    /// Size is `None` for unsized arrays like `int[]`, `Some(expr)` for sized like `int[n]`.
+    Array(Box<Type>, Option<Box<Expr>>),
 }
 
 // block
@@ -205,9 +207,12 @@ impl IdentStmtRest {
                 Stmt::Assign(vec![AssignTarget::ArrayIndex(name, indices)], vec![e])
             }
             IdentStmtRest::UnifiedDecl(base_ty, dims, suffix) => {
+                // Dimensions are parsed left-to-right: int[3][4] → dims=[Some(3), Some(4)].
+                // But the first bracket is the outermost Array level, so we reverse:
+                // inner = Array(Int, 4), outer = Array(inner, 3) → ([] ([] int 4) 3).
                 let mut ty = base_ty;
-                for _dim in &dims {
-                    ty = Type::Array(Box::new(ty));
+                for dim in dims.iter().rev() {
+                    ty = Type::Array(Box::new(ty), dim.clone().map(Box::new));
                 }
                 match suffix {
                     DeclSuffix::None => {

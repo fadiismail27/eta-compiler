@@ -3,6 +3,7 @@ mod cli;
 mod lexer;
 mod parser;
 mod pretty;
+mod sexp;
 
 use cli::Args;
 use cli::formatter;
@@ -31,7 +32,11 @@ fn main() {
 
 fn run_lexer(args: &Args) {
     for source_file in &args.source_files {
-        if let Err(e) = process_lex_file(source_file, args.output_dir.as_deref()) {
+        if let Err(e) = process_lex_file(
+            source_file,
+            args.source_path.as_deref(),
+            args.output_dir.as_deref(),
+        ) {
             eprintln!("Error processing {}: {}", source_file, e);
             process::exit(1);
         }
@@ -40,64 +45,99 @@ fn run_lexer(args: &Args) {
 
 fn run_parser(args: &Args) {
     for source_file in &args.source_files {
-        if let Err(e) = process_parse_file(source_file, args.output_dir.as_deref()) {
+        if let Err(e) = process_parse_file(
+            source_file,
+            args.source_path.as_deref(),
+            args.output_dir.as_deref(),
+        ) {
             eprintln!("Error processing {}: {}", source_file, e);
             process::exit(1);
         }
     }
 }
 
-fn process_lex_file(source_path: &str, output_dir: Option<&str>) -> Result<(), String> {
+/// Resolve the actual file path on disk: if `-sourcepath` is given, prepend it.
+fn resolve_input_path(file: &str, source_dir: Option<&str>) -> String {
+    match source_dir {
+        Some(dir) => {
+            let p = std::path::Path::new(dir).join(file);
+            p.to_string_lossy().into_owned()
+        }
+        None => file.to_string(),
+    }
+}
+
+fn process_lex_file(
+    source_file: &str,
+    source_dir: Option<&str>,
+    output_dir: Option<&str>,
+) -> Result<(), String> {
+    let input_path = resolve_input_path(source_file, source_dir);
     let source =
-        io::read_source_file(source_path).map_err(|e| format!("Failed to read file: {}", e))?;
+        io::read_source_file(&input_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let mut lex = Token::lexer_with_extras(&source, LexerExtras::new());
     let tokens = lexer::tokenize(&mut lex);
 
     let output = formatter::format_lexed_output(&tokens);
 
-    let output_path = io::compute_output_path(source_path, output_dir, "lexed");
+    // Output path is based on the original source_file, ignoring -sourcepath
+    let output_path = io::compute_output_path(source_file, output_dir, "lexed");
 
     io::write_output_file(&output_path, &output)
         .map_err(|e| format!("Failed to write output: {}", e))?;
 
-    println!("Lexed {} -> {}", source_path, output_path.display());
+    println!("Lexed {} -> {}", source_file, output_path.display());
     Ok(())
 }
 
-fn process_parse_file(source_path: &str, output_dir: Option<&str>) -> Result<(), String> {
+fn process_parse_file(
+    source_file: &str,
+    source_dir: Option<&str>,
+    output_dir: Option<&str>,
+) -> Result<(), String> {
+    let input_path = resolve_input_path(source_file, source_dir);
     let source =
-        io::read_source_file(source_path).map_err(|e| format!("Failed to read file: {}", e))?;
+        io::read_source_file(&input_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // lex and convert tokens for the parser
     let tokens = match adapter::lex_for_parser(&source) {
         AdapterResult::Tokens(t) => t,
         AdapterResult::LexError { line, col, msg } => {
             let output = format!("{}:{} error:{}", line, col, msg);
-            let output_path = io::compute_output_path(source_path, output_dir, "parsed");
+            let output_path = io::compute_output_path(source_file, output_dir, "parsed");
             io::write_output_file(&output_path, &output)
                 .map_err(|e| format!("Failed to write output: {}", e))?;
             return Ok(());
         }
     };
 
-    // parse
-    let parse_result =
-        parser::eta::ProgramParser::new().parse(tokens.into_iter().map(Ok::<_, String>));
+    let is_interface = source_file.ends_with(".eti");
 
-    let output = match parse_result {
-        Ok(ast) => {
-            // TODO: replace with s-expression printer
-            pretty::pretty_program(&ast)
+    let output = if is_interface {
+        // Parse as interface file (.eti)
+        let parse_result = parser::eta::InterfaceParser::new()
+            .parse(tokens.into_iter().map(Ok::<_, String>));
+        match parse_result {
+            Ok(ast) => sexp::sexp_interface(&ast),
+            Err(e) => format_parse_error(&source, e),
         }
-        Err(e) => format_parse_error(&source, e),
+    } else {
+        // Parse as program file (.eta)
+        let parse_result = parser::eta::ProgramParser::new()
+            .parse(tokens.into_iter().map(Ok::<_, String>));
+        match parse_result {
+            Ok(ast) => sexp::sexp_program(&ast),
+            Err(e) => format_parse_error(&source, e),
+        }
     };
 
-    let output_path = io::compute_output_path(source_path, output_dir, "parsed");
+    // Output path is based on the original source_file, ignoring -sourcepath
+    let output_path = io::compute_output_path(source_file, output_dir, "parsed");
     io::write_output_file(&output_path, &output)
         .map_err(|e| format!("Failed to write output: {}", e))?;
 
-    println!("Parsed {} -> {}", source_path, output_path.display());
+    println!("Parsed {} -> {}", source_file, output_path.display());
     Ok(())
 }
 
@@ -117,21 +157,68 @@ fn format_parse_error(
             format!("{}:{} error:Unexpected end of file", line, col)
         }
         ParseError::UnrecognizedToken {
-            token: (start, _, _),
+            token: (start, tok, _),
             ..
         } => {
             let (line, col) = byte_offset_to_line_col(source, start);
-            format!("{}:{} error:Unexpected token", line, col)
+            format!("{}:{} error:Unexpected token {}", line, col, token_to_string(&tok))
         }
         ParseError::ExtraToken {
-            token: (start, _, _),
+            token: (start, tok, _),
         } => {
             let (line, col) = byte_offset_to_line_col(source, start);
-            format!("{}:{} error:Extra token", line, col)
+            format!("{}:{} error:Unexpected token {}", line, col, token_to_string(&tok))
         }
         ParseError::User { error } => {
             format!("1:1 error:{}", error)
         }
+    }
+}
+
+/// Convert a Token to a human-readable string for error messages.
+fn token_to_string(tok: &parser::ast::Token) -> String {
+    use parser::ast::Token;
+    match tok {
+        Token::Use => "use".into(),
+        Token::If => "if".into(),
+        Token::Else => "else".into(),
+        Token::While => "while".into(),
+        Token::Return => "return".into(),
+        Token::Length => "length".into(),
+        Token::IntType => "int".into(),
+        Token::BoolType => "bool".into(),
+        Token::True => "true".into(),
+        Token::False => "false".into(),
+        Token::LParen => "(".into(),
+        Token::RParen => ")".into(),
+        Token::LBracket => "[".into(),
+        Token::RBracket => "]".into(),
+        Token::LBrace => "{".into(),
+        Token::RBrace => "}".into(),
+        Token::Colon => ":".into(),
+        Token::Semicolon => ";".into(),
+        Token::Comma => ",".into(),
+        Token::Assign => "=".into(),
+        Token::Underscore => "_".into(),
+        Token::Plus => "+".into(),
+        Token::Minus => "-".into(),
+        Token::Mul => "*".into(),
+        Token::HighMul => "*>>".into(),
+        Token::Div => "/".into(),
+        Token::Mod => "%".into(),
+        Token::Not => "!".into(),
+        Token::Lt => "<".into(),
+        Token::Le => "<=".into(),
+        Token::Gt => ">".into(),
+        Token::Ge => ">=".into(),
+        Token::Eq => "==".into(),
+        Token::Ne => "!=".into(),
+        Token::And => "&".into(),
+        Token::Or => "|".into(),
+        Token::Identifier(s) => s.clone(),
+        Token::IntLiteral(n) => n.to_string(),
+        Token::CharLiteral(c) => format!("'{}'", char::from_u32(*c as u32).unwrap_or('?')),
+        Token::StringLiteral(s) => format!("\"{}\"", s),
     }
 }
 

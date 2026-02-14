@@ -118,7 +118,7 @@ fn format_type(t: &Type) -> String {
     match t {
         Type::Int => "int".to_string(),
         Type::Bool => "bool".to_string(),
-        Type::Array(inner) => format!("{}[]", format_type(inner)),
+        Type::Array(inner, _size) => format!("{}[]", format_type(inner)),
     }
 }
 

@@ -73,7 +73,7 @@ fn test_type_format() {
     assert_eq!(format_type(&Type::Int), "int");
     assert_eq!(format_type(&Type::Bool), "bool");
     assert_eq!(
-        format_type(&Type::Array(Box::new(Type::Array(Box::new(Type::Int))))),
+        format_type(&Type::Array(Box::new(Type::Array(Box::new(Type::Int), None)), None)),
         "int[][]"
     );
 }

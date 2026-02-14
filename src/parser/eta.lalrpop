@@ -115,7 +115,7 @@ ReturnTypes: Vec<Type> = {
 
 Type: Type = {
     BaseType,
-    <t: Type> "[" "]" => Type::Array(Box::new(t)),
+    <t: Type> "[" "]" => Type::Array(Box::new(t), None),
 };
 
 BaseType: Type = {
