@@ -2,6 +2,7 @@ use clap::Parser;
 mod cli;
 mod lexer;
 mod parser;
+mod pretty;
 
 use cli::Args;
 use cli::formatter;
@@ -87,7 +88,7 @@ fn process_parse_file(source_path: &str, output_dir: Option<&str>) -> Result<(),
     let output = match parse_result {
         Ok(ast) => {
             // TODO: replace with s-expression printer
-            format!("{:?}", ast)
+            pretty::pretty_program(&ast)
         }
         Err(e) => format_parse_error(&source, e),
     };
