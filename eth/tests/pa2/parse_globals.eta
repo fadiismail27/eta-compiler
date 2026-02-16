@@ -1,0 +1,6 @@
+x: int
+y: bool = true
+z: int = 42
+w: int = -1
+
+main() { }

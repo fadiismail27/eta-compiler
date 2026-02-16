@@ -1,0 +1,2 @@
+ratadd(p1: int, q1: int, p2: int, q2: int): int, int
+gcd(a: int, b: int): int

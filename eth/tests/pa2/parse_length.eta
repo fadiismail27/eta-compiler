@@ -1,0 +1,4 @@
+test(a: int[]) {
+    n: int = length(a)
+    b: bool = length(a) > 0
+}

@@ -1,0 +1,10 @@
+test() {
+    a: int
+    b: bool
+    c: int[]
+    d: bool[][]
+    e: int[][][]
+    f: int[5]
+    g: int[3][]
+    h: int[2][3]
+}
