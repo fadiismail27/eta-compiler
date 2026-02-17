@@ -1,0 +1,15 @@
+noreturn() {
+    x: int = 1
+}
+
+single(): int {
+    return 5
+}
+
+multi(): int, bool {
+    return 1, true
+}
+
+empty_return() {
+    return
+}

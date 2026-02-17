@@ -1,0 +1,13 @@
+(()
+ ((test
+   ()
+   ()
+   ((= (x int) 5)
+    (= x 10)
+    (a ([] int 3))
+    (= ([] a 0) 1)
+    (= ([] a 1) 2)
+    (= (x (y int)) (foo))
+    (= ((p int) (q int)) (bar))))
+  (foo () (int int) ((return 1 2)))
+  (bar () (int int) ((return 3 4)))))

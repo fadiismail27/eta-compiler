@@ -1,0 +1,12 @@
+test() {
+    a: int = 42
+    b: int = 0
+    c: int = 9223372036854775807
+    d: bool = true
+    e: bool = false
+    f: int = 'a'
+    g: int = '\n'
+    h: int = '\\'
+    s: int[] = "hello"
+    t: int[] = "escape\t\n"
+}

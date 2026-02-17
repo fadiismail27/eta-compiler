@@ -1,0 +1,8 @@
+(()
+ ((test
+   ((x int) (a bool) (b bool))
+   ()
+   ((if (> x 0) (= y 1))
+    (if (> x 0) (= y 1) (= y 2))
+    (if a (if b (= x 1) (= x 2)))
+    (if a ((= x 1)) ((= x 2)))))))

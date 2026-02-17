@@ -1,0 +1,30 @@
+test(a: int, b: int, c: bool, d: bool) {
+    // arithmetic
+    x: int = a + b
+    x = a - b
+    x = a * b
+    x = a *>> b
+    x = a / b
+    x = a % b
+
+    // comparison
+    y: bool = a < b
+    y = a <= b
+    y = a > b
+    y = a >= b
+    y = a == b
+    y = a != b
+
+    // logical
+    z: bool = c & d
+    z = c | d
+    z = !c
+
+    // unary minus
+    w: int = -a
+
+    // precedence: a + b * c == a + (b * c)
+    x = a + b * a
+    // left assoc: a - b - c == (a - b) - c
+    x = a - b - a
+}

@@ -1,0 +1,19 @@
+test() {
+    // simple assign
+    x: int = 5
+    x = 10
+
+    // array assign
+    a: int[3]
+    a[0] = 1
+    a[1] = 2
+
+    // multi-assign
+    x, y: int = foo()
+
+    // multi-decl
+    p: int, q: int = bar()
+}
+
+foo(): int, int { return 1, 2 }
+bar(): int, int { return 3, 4 }

@@ -1,0 +1,39 @@
+# eth test script for PA2 (parser)
+
+build
+
+etac ("Test --parse valid programs") "--parse" {
+    parse_empty.eta;
+    parse_basic_func.eta;
+    parse_use.eta;
+    parse_globals.eta;
+    parse_if_else.eta;
+    parse_while.eta;
+    parse_return.eta;
+    parse_types.eta;
+    parse_operators.eta;
+    parse_highmul.eta;
+    parse_assign.eta;
+    parse_literals.eta;
+    parse_array_init.eta;
+    parse_func_call.eta;
+    parse_length.eta;
+    parse_discard.eta;
+    parse_complex.eta;
+}
+
+etac ("Test --parse interface files") "--parse" {
+    parse_interface.eti;
+    parse_interface_multi_return.eti;
+}
+
+etac ("Test --parse errors") "--parse" {
+    parse_err_missing_brace.eta (Syntax);
+    parse_err_missing_paren.eta (Syntax);
+    parse_err_bad_toplevel.eta (Syntax);
+    parse_err_double_assign.eta (Syntax);
+    parse_err_bad_type.eta (Syntax);
+    parse_err_bad_expr.eta (Syntax);
+    parse_lex_err_unterminated.eta (Lexical, "unterminated string literal");
+    parse_lex_err_bad_char.eta (Lexical, "empty character literal");
+}

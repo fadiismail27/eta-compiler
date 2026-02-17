@@ -1,0 +1,12 @@
+(()
+ ((test
+   ()
+   ()
+   ((print "hello")
+    (= (x int) (foo 1 2))
+    (= (y int) (bar))
+    (= (z int) (foo (bar) 3))
+    (= (w int) (foo (+ 1 2) (* x y)))))
+  (foo ((a int) (b int)) (int) ((return (+ a b))))
+  (bar () (int) ((return 0)))
+  (print ((s ([] int))) () ())))
