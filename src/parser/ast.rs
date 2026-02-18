@@ -83,7 +83,7 @@ pub struct Param {
     pub ty: Type,
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Type {
     Int,
     Bool,
@@ -118,7 +118,7 @@ pub enum AssignTarget {
 }
 
 // expressions
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Expr {
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     UnaryOp(UnaryOp, Box<Expr>),
@@ -134,7 +134,7 @@ pub enum Expr {
 }
 
 // operators
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum BinOp {
     Add,
     Sub,
@@ -152,7 +152,7 @@ pub enum BinOp {
     Or,
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum UnaryOp {
     Neg,
     Not,

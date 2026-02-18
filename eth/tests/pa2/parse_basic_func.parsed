@@ -1,4 +1,0 @@
-(()
- ((foo ((x int) (y bool)) (int) ((return x)))
-  (bar () (int bool) ((return 1 true)))
-  (empty () () ())))

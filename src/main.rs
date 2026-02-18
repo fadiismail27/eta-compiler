@@ -4,6 +4,7 @@ mod lexer;
 mod parser;
 mod pretty;
 mod sexp;
+mod checker;
 
 use cli::Args;
 use cli::formatter;
