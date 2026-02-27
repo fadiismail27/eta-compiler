@@ -122,9 +122,13 @@ pub enum Stmt {
 // assignment targets
 #[derive(Clone, Debug)]
 pub enum AssignTarget {
+    // this is '_'
     Discard,
+    // x 
     Var(String),
+    // x:t 
     Decl(String, Type),
+    // x[][]...[]
     ArrayIndex(String, Vec<Expr>),
 }
 
