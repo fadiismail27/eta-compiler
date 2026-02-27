@@ -83,13 +83,24 @@ pub struct Param {
     pub ty: Type,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Type {
     Int,
     Bool,
     /// `Array(element_type, optional_size)`.
     /// Size is `None` for unsized arrays like `int[]`, `Some(expr)` for sized like `int[n]`.
     Array(Box<Type>, Option<Box<Expr>>),
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::Int, Type::Int) => true,
+            (Type::Bool, Type::Bool) => true,
+            (Type::Array(base1, _), Type::Array(base2, _)) => base1 == base2,
+            _ => false,
+        }
+    }
 }
 
 // block
@@ -115,6 +126,17 @@ pub enum AssignTarget {
     Var(String),
     Decl(String, Type),
     ArrayIndex(String, Vec<Expr>),
+}
+
+#[derive(Clone, Debug)]
+pub enum IdentStmtRest {
+    ProcCall(Vec<Expr>),
+    Assign(Expr),
+    ArrayAssign(Vec<Expr>, Expr),
+    UnifiedDecl(Type, Vec<Option<Expr>>, DeclSuffix),
+    MultiAssign(Vec<AssignTarget>, Vec<Expr>),
+    MultiArrayAssign(Vec<Expr>, Vec<AssignTarget>, Vec<Expr>),
+    CallIndexAssign(Vec<Expr>, Vec<Expr>, Expr),
 }
 
 // expressions
@@ -181,28 +203,13 @@ pub enum DeclSuffix {
     Multi(Vec<AssignTarget>, Vec<Expr>),
 }
 
-#[derive(Clone, Debug)]
-pub enum IdentStmtRest {
-    ProcCall(Vec<Expr>),
-    Assign(Expr),
-    ArrayAssign(Vec<Expr>, Expr),
-    UnifiedDecl(Type, Vec<Option<Expr>>, DeclSuffix),
-    MultiAssign(Vec<AssignTarget>, Vec<Expr>),
-    MultiArrayAssign(Vec<Expr>, Vec<AssignTarget>, Vec<Expr>),
-    CallIndexAssign(Vec<Expr>, Vec<Expr>, Expr),
-}
-
 impl IdentStmtRest {
     // converts an ident-started statement fragment into a full Stmt
     // name is the leading IDENT that was already consumed by the grammar
     pub fn into_stmt(self, name: String) -> Stmt {
         match self {
-            IdentStmtRest::ProcCall(args) => {
-                Stmt::Assign(vec![], vec![Expr::FuncCall(name, args)])
-            }
-            IdentStmtRest::Assign(e) => {
-                Stmt::Assign(vec![AssignTarget::Var(name)], vec![e])
-            }
+            IdentStmtRest::ProcCall(args) => Stmt::Assign(vec![], vec![Expr::FuncCall(name, args)]),
+            IdentStmtRest::Assign(e) => Stmt::Assign(vec![AssignTarget::Var(name)], vec![e]),
             IdentStmtRest::ArrayAssign(indices, e) => {
                 Stmt::Assign(vec![AssignTarget::ArrayIndex(name, indices)], vec![e])
             }
@@ -215,9 +222,7 @@ impl IdentStmtRest {
                     ty = Type::Array(Box::new(ty), dim.clone().map(Box::new));
                 }
                 match suffix {
-                    DeclSuffix::None => {
-                        Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![])
-                    }
+                    DeclSuffix::None => Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![]),
                     DeclSuffix::Init(e) => {
                         Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![e])
                     }
