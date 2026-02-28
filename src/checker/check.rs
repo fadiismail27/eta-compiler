@@ -807,14 +807,4 @@ impl TypeChecker {
 
     }
 
-    fn check_iden_stmt(&mut self, stmt: &IdentStmtRest) -> SemanticType {
-        // ProcCall(Vec<Expr>),
-        // Assign(Expr),
-        // ArrayAssign(Vec<Expr>, Expr),
-        // UnifiedDecl(Type, Vec<Option<Expr>>, DeclSuffix),
-        // MultiAssign(Vec<AssignTarget>, Vec<Expr>),
-        // MultiArrayAssign(Vec<Expr>, Vec<AssignTarget>, Vec<Expr>),
-        // CallIndexAssign(Vec<Expr>, Vec<Expr>, Expr),
-        SemanticType::Error
-    }
 }
