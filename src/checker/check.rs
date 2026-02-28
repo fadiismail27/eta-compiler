@@ -94,7 +94,7 @@ pub struct TypeChecker {
 impl TypeChecker {
     pub fn new() -> Self {
         TypeChecker {
-            context: Context,
+            context: Context::new(),
             current_return_type: None,
         }
     }
