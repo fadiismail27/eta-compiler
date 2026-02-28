@@ -207,7 +207,6 @@ fn write_assign(buf: &mut String, targets: &[AssignTarget], values: &[Expr], lev
             "expected exactly 1 value in procedure-call statement, got {}",
             values.len()
         );
-        // TODO: could also assert matches!(values[0], Expr::FuncCall(..))
         for (i, val) in values.iter().enumerate() {
             if i > 0 {
                 buf.push_str(", ");

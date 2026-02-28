@@ -92,6 +92,17 @@ pub enum Type {
     Array(Box<Type>, Option<Box<Expr>>),
 }
 
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::Int, Type::Int) => true,
+            (Type::Bool, Type::Bool) => true,
+            (Type::Array(base1, _), Type::Array(base2, _)) => base1 == base2,
+            _ => false,
+        }
+    }
+}
+
 // block
 #[derive(Clone, Debug)]
 pub struct Block {
@@ -111,14 +122,29 @@ pub enum Stmt {
 // assignment targets
 #[derive(Clone, Debug)]
 pub enum AssignTarget {
+    // this is '_'
     Discard,
+    // x
     Var(String),
+    // x:t
     Decl(String, Type),
+    // x[][]...[]
     ArrayIndex(String, Vec<Expr>),
 }
 
-// expressions
 #[derive(Clone, Debug)]
+pub enum IdentStmtRest {
+    ProcCall(Vec<Expr>),
+    Assign(Expr),
+    ArrayAssign(Vec<Expr>, Expr),
+    UnifiedDecl(Type, Vec<Option<Expr>>, DeclSuffix),
+    MultiAssign(Vec<AssignTarget>, Vec<Expr>),
+    MultiArrayAssign(Vec<Expr>, Vec<AssignTarget>, Vec<Expr>),
+    CallIndexAssign(Vec<Expr>, Vec<Expr>, Expr),
+}
+
+// expressions
+#[derive(PartialEq, Clone, Debug)]
 pub enum Expr {
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     UnaryOp(UnaryOp, Box<Expr>),
@@ -134,7 +160,7 @@ pub enum Expr {
 }
 
 // operators
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum BinOp {
     Add,
     Sub,
@@ -152,7 +178,7 @@ pub enum BinOp {
     Or,
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -181,28 +207,13 @@ pub enum DeclSuffix {
     Multi(Vec<AssignTarget>, Vec<Expr>),
 }
 
-#[derive(Clone, Debug)]
-pub enum IdentStmtRest {
-    ProcCall(Vec<Expr>),
-    Assign(Expr),
-    ArrayAssign(Vec<Expr>, Expr),
-    UnifiedDecl(Type, Vec<Option<Expr>>, DeclSuffix),
-    MultiAssign(Vec<AssignTarget>, Vec<Expr>),
-    MultiArrayAssign(Vec<Expr>, Vec<AssignTarget>, Vec<Expr>),
-    CallIndexAssign(Vec<Expr>, Vec<Expr>, Expr),
-}
-
 impl IdentStmtRest {
     // converts an ident-started statement fragment into a full Stmt
     // name is the leading IDENT that was already consumed by the grammar
     pub fn into_stmt(self, name: String) -> Stmt {
         match self {
-            IdentStmtRest::ProcCall(args) => {
-                Stmt::Assign(vec![], vec![Expr::FuncCall(name, args)])
-            }
-            IdentStmtRest::Assign(e) => {
-                Stmt::Assign(vec![AssignTarget::Var(name)], vec![e])
-            }
+            IdentStmtRest::ProcCall(args) => Stmt::Assign(vec![], vec![Expr::FuncCall(name, args)]),
+            IdentStmtRest::Assign(e) => Stmt::Assign(vec![AssignTarget::Var(name)], vec![e]),
             IdentStmtRest::ArrayAssign(indices, e) => {
                 Stmt::Assign(vec![AssignTarget::ArrayIndex(name, indices)], vec![e])
             }
@@ -215,9 +226,7 @@ impl IdentStmtRest {
                     ty = Type::Array(Box::new(ty), dim.clone().map(Box::new));
                 }
                 match suffix {
-                    DeclSuffix::None => {
-                        Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![])
-                    }
+                    DeclSuffix::None => Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![]),
                     DeclSuffix::Init(e) => {
                         Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![e])
                     }
@@ -244,7 +253,6 @@ impl IdentStmtRest {
                 for idx in indices {
                     target = Expr::Index(Box::new(target), Box::new(idx));
                 }
-                // TODO: need AssignTarget::Expr variant for computed lvalues
                 Stmt::Assign(vec![AssignTarget::Discard], vec![e])
             }
         }

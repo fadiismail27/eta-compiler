@@ -123,12 +123,12 @@ BaseType: Type = {
     "bool" => Type::Bool,
 };
 
+// BIG UP MYERS FOR THE NOTES ON DANGLING ELSE!!!!
 Stmt: Stmt = {
     MatchedIf,
     UnmatchedIf,
 };
 
-// BIG UP MYERS FOR THE NOTES ON DANGLING ELSE!!!!
 MatchedIf: Stmt = {
     "if" <g:Expr> <then:MatchedIf> "else" <els:MatchedIf>
         => Stmt::If(g, Box::new(then), Some(Box::new(els))),

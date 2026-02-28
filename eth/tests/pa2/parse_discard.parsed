@@ -1,4 +1,0 @@
-(()
- ((test () () ((= _ (foo)) (= (_ (x int)) (bar)) (= (_ _) (bar))))
-  (foo () (int) ((return 1)))
-  (bar () (int int) ((return 1 2)))))

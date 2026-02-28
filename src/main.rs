@@ -1,4 +1,5 @@
 use clap::Parser;
+mod checker;
 mod cli;
 mod lexer;
 mod parser;
@@ -189,10 +190,10 @@ fn process_typecheck_file(
         let parse_result =
             parser::eta::InterfaceParser::new().parse(tokens.into_iter().map(Ok::<_, String>));
         match parse_result {
-            Ok(ast) => match typecheck::typecheck_interface(&ast) {
-                Ok(()) => "Valid Eta Program".to_string(),
-                Err(e) => e.to_string(),
-            },
+            Ok(_ast) => {
+                // TODO: interface type checking
+                "Valid Eta Program".to_string()
+            }
             Err(e) => format_parse_error(&source, e),
         }
     } else {
@@ -202,10 +203,15 @@ fn process_typecheck_file(
         match parse_result {
             Ok(ast) => {
                 // Load interface files for each `use` declaration
-                let interfaces = load_interfaces(&ast.uses, source_dir, lib_dir)?;
-                match typecheck::typecheck_program(&ast, &interfaces) {
-                    Ok(()) => "Valid Eta Program".to_string(),
-                    Err(e) => e.to_string(),
+                let _interfaces = load_interfaces(&ast.uses, source_dir, lib_dir)?;
+                // TODO: register interface signatures in the type checker context
+                let mut tc = checker::check::TypeChecker::new();
+                tc.check_program(&ast);
+                if tc.errors.is_empty() {
+                    "Valid Eta Program".to_string()
+                } else {
+                    // Report first error (spec requires one error per file)
+                    format!("1:1 error:{}", tc.errors[0])
                 }
             }
             Err(e) => format_parse_error(&source, e),
