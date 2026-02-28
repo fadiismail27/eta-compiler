@@ -130,41 +130,47 @@ Stmt: Stmt = {
 };
 
 MatchedIf: Stmt = {
-    "if" <g:Expr> <then:MatchedIf> "else" <els:MatchedIf>
-        => Stmt::If(g, Box::new(then), Some(Box::new(els))),
+    <lo:@L> "if" <g:Expr> <then:MatchedIf> "else" <els:MatchedIf> <hi:@R>
+        => spanned(StmtKind::If(g, Box::new(then), Some(Box::new(els))), lo, hi),
 
-    "while" <g:Expr> <body:MatchedIf> => Stmt::While(g, Box::new(body)),
+    <lo:@L> "while" <g:Expr> <body:MatchedIf> <hi:@R>
+        => spanned(StmtKind::While(g, Box::new(body)), lo, hi),
+
     AtomicStmt,
 };
 
 UnmatchedIf: Stmt = {
-    "if" <g:Expr> <then:Stmt> => Stmt::If(g, Box::new(then), None),
-    "if" <g:Expr> <then:MatchedIf> "else" <els:UnmatchedIf>
-        => Stmt::If(g, Box::new(then), Some(Box::new(els))),
+    <lo:@L> "if" <g:Expr> <then:Stmt> <hi:@R>
+        => spanned(StmtKind::If(g, Box::new(then), None), lo, hi),
 
-    "while" <g:Expr> <body:UnmatchedIf> => Stmt::While(g, Box::new(body)),
+    <lo:@L> "if" <g:Expr> <then:MatchedIf> "else" <els:UnmatchedIf> <hi:@R>
+        => spanned(StmtKind::If(g, Box::new(then), Some(Box::new(els))), lo, hi),
+
+    <lo:@L> "while" <g:Expr> <body:UnmatchedIf> <hi:@R>
+        => spanned(StmtKind::While(g, Box::new(body)), lo, hi),
 };
 
 AtomicStmt: Stmt = {
     // Blocks are always safe because '}' closes them
-    Block => Stmt::Block(<>),
+    <lo:@L> <b:Block> <hi:@R>
+        => spanned(StmtKind::Block(b), lo, hi),
 
     // Discard assignment: _ = expr
-    "_" "=" <e: Expr>
-        => Stmt::Assign(vec![AssignTarget::Discard], vec![e]),
+    <lo:@L> "_" "=" <e: Expr> <hi:@R>
+        => spanned(StmtKind::Assign(vec![AssignTarget::Discard], vec![e]), lo, hi),
 
     // Multi-discard: _, x = expr
-    "_" "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>>
+    <lo:@L> "_" "," <rest: Comma1<LhsItem>> "=" <vals: Comma1<Expr>> <hi:@R>
         => {
             let mut targets = vec![AssignTarget::Discard];
             targets.extend(rest);
-            Stmt::Assign(targets, vals)
+            spanned(StmtKind::Assign(targets, vals), lo, hi)
         },
 
     // Identifier-start statements (Assignments, Calls, Decls)
     // Delegated to IdentStmtRest to avoid left-recursion conflicts
-    <name: IDENT> <rest: IdentStmtRest>
-        => rest.into_stmt(name),
+    <lo:@L> <name: IDENT> <rest: IdentStmtRest> <hi:@R>
+        => spanned(rest.into_stmt(name, Span { start: lo, end: hi }), lo, hi),
 };
 
 Block: Block = {
@@ -263,46 +269,62 @@ Expr: Expr = {
     PostfixExpr,
 
     #[precedence(level="1")]
-    "-" <e: Expr> => Expr::UnaryOp(UnaryOp::Neg, Box::new(e)),
-    "!" <e: Expr> => Expr::UnaryOp(UnaryOp::Not, Box::new(e)),
+    <lo:@L> "-" <e: Expr> <hi:@R>
+        => spanned(ExprKind::UnaryOp(UnaryOp::Neg, Box::new(e)), lo, hi),
+    <lo:@L> "!" <e: Expr> <hi:@R>
+        => spanned(ExprKind::UnaryOp(UnaryOp::Not, Box::new(e)), lo, hi),
 
     #[precedence(level="2")] #[assoc(side="left")]
-    <l:Expr> "*"   <r:Expr> => Expr::BinOp(BinOp::Mul, Box::new(l), Box::new(r)),
-    <l:Expr> "*>>" <r:Expr> => Expr::BinOp(BinOp::HighMul, Box::new(l), Box::new(r)),
-    <l:Expr> "/"   <r:Expr> => Expr::BinOp(BinOp::Div, Box::new(l), Box::new(r)),
-    <l:Expr> "%"   <r:Expr> => Expr::BinOp(BinOp::Mod, Box::new(l), Box::new(r)),
+    <lo:@L> <l:Expr> "*"   <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Mul, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> "*>>" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::HighMul, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> "/"   <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Div, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> "%"   <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Mod, Box::new(l), Box::new(r)), lo, hi),
 
     #[precedence(level="3")] #[assoc(side="left")]
-    <l:Expr> "+" <r:Expr> => Expr::BinOp(BinOp::Add, Box::new(l), Box::new(r)),
-    <l:Expr> "-" <r:Expr> => Expr::BinOp(BinOp::Sub, Box::new(l), Box::new(r)),
+    <lo:@L> <l:Expr> "+" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Add, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> "-" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Sub, Box::new(l), Box::new(r)), lo, hi),
 
     #[precedence(level="4")] #[assoc(side="left")]
-    <l:Expr> "<"  <r:Expr> => Expr::BinOp(BinOp::Lt, Box::new(l), Box::new(r)),
-    <l:Expr> "<=" <r:Expr> => Expr::BinOp(BinOp::Le, Box::new(l), Box::new(r)),
-    <l:Expr> ">"  <r:Expr> => Expr::BinOp(BinOp::Gt, Box::new(l), Box::new(r)),
-    <l:Expr> ">=" <r:Expr> => Expr::BinOp(BinOp::Ge, Box::new(l), Box::new(r)),
+    <lo:@L> <l:Expr> "<"  <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Lt, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> "<=" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Le, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> ">"  <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Gt, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> ">=" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Ge, Box::new(l), Box::new(r)), lo, hi),
 
     #[precedence(level="5")] #[assoc(side="left")]
-    <l:Expr> "==" <r:Expr> => Expr::BinOp(BinOp::Eq, Box::new(l), Box::new(r)),
-    <l:Expr> "!=" <r:Expr> => Expr::BinOp(BinOp::Ne, Box::new(l), Box::new(r)),
+    <lo:@L> <l:Expr> "==" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Eq, Box::new(l), Box::new(r)), lo, hi),
+    <lo:@L> <l:Expr> "!=" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Ne, Box::new(l), Box::new(r)), lo, hi),
 
     #[precedence(level="6")] #[assoc(side="left")]
-    <l:Expr> "&" <r:Expr> => Expr::BinOp(BinOp::And, Box::new(l), Box::new(r)),
+    <lo:@L> <l:Expr> "&" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::And, Box::new(l), Box::new(r)), lo, hi),
 
     #[precedence(level="7")] #[assoc(side="left")]
-    <l:Expr> "|" <r:Expr> => Expr::BinOp(BinOp::Or, Box::new(l), Box::new(r)),
+    <lo:@L> <l:Expr> "|" <r:Expr> <hi:@R>
+        => spanned(ExprKind::BinOp(BinOp::Or, Box::new(l), Box::new(r)), lo, hi),
 };
 
 // Postfix: function calls and array indexing (left-associative)
 PostfixExpr: Expr = {
-    <arr: PostfixExpr> "[" <idx: Expr> "]"
-        => Expr::Index(Box::new(arr), Box::new(idx)),
+    <lo:@L> <arr: PostfixExpr> "[" <idx: Expr> "]" <hi:@R>
+        => spanned(ExprKind::Index(Box::new(arr), Box::new(idx)), lo, hi),
 
-    <func: IDENT> "(" <args: Comma<Expr>> ")"
-        => Expr::FuncCall(func, args),
+    <lo:@L> <func: IDENT> "(" <args: Comma<Expr>> ")" <hi:@R>
+        => spanned(ExprKind::FuncCall(func, args), lo, hi),
 
-    "length" "(" <e: Expr> ")"
-        => Expr::Length(Box::new(e)),
+    <lo:@L> "length" "(" <e: Expr> ")" <hi:@R>
+        => spanned(ExprKind::Length(Box::new(e)), lo, hi),
 
     AtomExpr,
 };
@@ -311,29 +333,30 @@ PostfixExpr: Expr = {
 
 AtomExpr: Expr = {
     // Literals
-    INT_LIT    => Expr::IntLit(<>),
-    CHAR_LIT   => Expr::CharLit(<>),
-    STRING_LIT => Expr::StringLit(<>),
-    "true"     => Expr::BoolLit(true),
-    "false"    => Expr::BoolLit(false),
+    <lo:@L> <n:INT_LIT> <hi:@R>    => spanned(ExprKind::IntLit(n), lo, hi),
+    <lo:@L> <c:CHAR_LIT> <hi:@R>   => spanned(ExprKind::CharLit(c), lo, hi),
+    <lo:@L> <s:STRING_LIT> <hi:@R>  => spanned(ExprKind::StringLit(s), lo, hi),
+    <lo:@L> "true" <hi:@R>          => spanned(ExprKind::BoolLit(true), lo, hi),
+    <lo:@L> "false" <hi:@R>         => spanned(ExprKind::BoolLit(false), lo, hi),
 
     // Variable reference
-    IDENT => Expr::Var(<>),
+    <lo:@L> <name:IDENT> <hi:@R>    => spanned(ExprKind::Var(name), lo, hi),
 
     // Parenthesized expression
     "(" <Expr> ")",
 
     // Array constructor: { e1, e2, ... }
-    "{" <elems: Comma<Expr>> "}" => Expr::ArrayConstructor(elems),
+    <lo:@L> "{" <elems: Comma<Expr>> "}" <hi:@R>
+        => spanned(ExprKind::ArrayConstructor(elems), lo, hi),
 };
 
 // Literal (used for global variable initializers)
 Literal: Expr = {
-    INT_LIT              => Expr::IntLit(<>),
-    "-" <n: INT_LIT>     => Expr::IntLit(-n),
-    CHAR_LIT             => Expr::CharLit(<>),
-    "true"               => Expr::BoolLit(true),
-    "false"              => Expr::BoolLit(false),
+    <lo:@L> <n:INT_LIT> <hi:@R>           => spanned(ExprKind::IntLit(n), lo, hi),
+    <lo:@L> "-" <n: INT_LIT> <hi:@R>      => spanned(ExprKind::IntLit(-n), lo, hi),
+    <lo:@L> <c:CHAR_LIT> <hi:@R>          => spanned(ExprKind::CharLit(c), lo, hi),
+    <lo:@L> "true" <hi:@R>                => spanned(ExprKind::BoolLit(true), lo, hi),
+    <lo:@L> "false" <hi:@R>               => spanned(ExprKind::BoolLit(false), lo, hi),
 };
 
 // Interface files (.eti)

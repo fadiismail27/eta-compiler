@@ -1,14 +1,15 @@
 use super::*;
 
+fn e(kind: ExprKind) -> Expr { Spanned::dummy(kind) }
+fn s(kind: StmtKind) -> Stmt { Spanned::dummy(kind) }
+
 /// Helper: normalize whitespace in an S-expression string for comparison.
-/// Collapses all runs of whitespace to a single space and trims.
 fn normalize(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[test]
 fn test_simple_program_no_uses() {
-    // foo() { x:int = 2; }
     let p = Program {
         uses: vec![],
         items: vec![TopLevelItem::Func(FuncDef {
@@ -16,10 +17,10 @@ fn test_simple_program_no_uses() {
             params: vec![],
             returns: vec![],
             body: Block {
-                stmts: vec![Stmt::Assign(
+                stmts: vec![s(StmtKind::Assign(
                     vec![AssignTarget::Decl("x".into(), Type::Int)],
-                    vec![Expr::IntLit(2)],
-                )],
+                    vec![e(ExprKind::IntLit(2))],
+                ))],
                 return_val: None,
             },
         })],
@@ -31,7 +32,6 @@ fn test_simple_program_no_uses() {
 
 #[test]
 fn test_program_with_use() {
-    // use io; main(args: int[][]) { }
     let p = Program {
         uses: vec!["io".into()],
         items: vec![TopLevelItem::Func(FuncDef {
@@ -54,62 +54,56 @@ fn test_program_with_use() {
 
 #[test]
 fn test_binop_expr() {
-    // 1 + 2 * 3  →  (+ 1 (* 2 3))
-    let e = Expr::BinOp(
+    let ex = e(ExprKind::BinOp(
         BinOp::Add,
-        Box::new(Expr::IntLit(1)),
-        Box::new(Expr::BinOp(
+        Box::new(e(ExprKind::IntLit(1))),
+        Box::new(e(ExprKind::BinOp(
             BinOp::Mul,
-            Box::new(Expr::IntLit(2)),
-            Box::new(Expr::IntLit(3)),
-        )),
-    );
-    assert_eq!(render_flat(&sexp_expr(&e)), "(+ 1 (* 2 3))");
+            Box::new(e(ExprKind::IntLit(2))),
+            Box::new(e(ExprKind::IntLit(3))),
+        ))),
+    ));
+    assert_eq!(render_flat(&sexp_expr(&ex)), "(+ 1 (* 2 3))");
 }
 
 #[test]
 fn test_unary_neg() {
-    // -4  →  (- 4)
-    let e = Expr::UnaryOp(UnaryOp::Neg, Box::new(Expr::IntLit(4)));
-    assert_eq!(render_flat(&sexp_expr(&e)), "(- 4)");
+    let ex = e(ExprKind::UnaryOp(UnaryOp::Neg, Box::new(e(ExprKind::IntLit(4)))));
+    assert_eq!(render_flat(&sexp_expr(&ex)), "(- 4)");
 }
 
 #[test]
 fn test_func_call() {
-    // gcd(q1, q2)  →  (gcd q1 q2)
-    let e = Expr::FuncCall(
+    let ex = e(ExprKind::FuncCall(
         "gcd".into(),
-        vec![Expr::Var("q1".into()), Expr::Var("q2".into())],
-    );
-    assert_eq!(render_flat(&sexp_expr(&e)), "(gcd q1 q2)");
+        vec![e(ExprKind::Var("q1".into())), e(ExprKind::Var("q2".into()))],
+    ));
+    assert_eq!(render_flat(&sexp_expr(&ex)), "(gcd q1 q2)");
 }
 
 #[test]
 fn test_index_expr() {
-    // a[j]  →  ([] a j)
-    let e = Expr::Index(
-        Box::new(Expr::Var("a".into())),
-        Box::new(Expr::Var("j".into())),
-    );
-    assert_eq!(render_flat(&sexp_expr(&e)), "([] a j)");
+    let ex = e(ExprKind::Index(
+        Box::new(e(ExprKind::Var("a".into()))),
+        Box::new(e(ExprKind::Var("j".into()))),
+    ));
+    assert_eq!(render_flat(&sexp_expr(&ex)), "([] a j)");
 }
 
 #[test]
 fn test_length_expr() {
-    // length(a)  →  (length a)
-    let e = Expr::Length(Box::new(Expr::Var("a".into())));
-    assert_eq!(render_flat(&sexp_expr(&e)), "(length a)");
+    let ex = e(ExprKind::Length(Box::new(e(ExprKind::Var("a".into())))));
+    assert_eq!(render_flat(&sexp_expr(&ex)), "(length a)");
 }
 
 #[test]
 fn test_array_constructor() {
-    // {1, 2, 3}  →  (1 2 3)
-    let e = Expr::ArrayConstructor(vec![
-        Expr::IntLit(1),
-        Expr::IntLit(2),
-        Expr::IntLit(3),
-    ]);
-    assert_eq!(render_flat(&sexp_expr(&e)), "(1 2 3)");
+    let ex = e(ExprKind::ArrayConstructor(vec![
+        e(ExprKind::IntLit(1)),
+        e(ExprKind::IntLit(2)),
+        e(ExprKind::IntLit(3)),
+    ]));
+    assert_eq!(render_flat(&sexp_expr(&ex)), "(1 2 3)");
 }
 
 #[test]
@@ -119,156 +113,145 @@ fn test_type_int() {
 
 #[test]
 fn test_type_array() {
-    // int[][]  →  ([] ([] int))
     let t = Type::Array(Box::new(Type::Array(Box::new(Type::Int), None)), None);
     assert_eq!(render_flat(&sexp_type(&t)), "([] ([] int))");
 }
 
 #[test]
 fn test_decl_only_stmt() {
-    // z: int  →  (z int)
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![AssignTarget::Decl("z".into(), Type::Int)],
         vec![],
-    );
-    assert_eq!(render_flat(&sexp_stmt(&s)), "(z int)");
+    ));
+    assert_eq!(render_flat(&sexp_stmt(&st)), "(z int)");
 }
 
 #[test]
 fn test_assign_stmt() {
-    // x = x + 1  →  (= x (+ x 1))
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![AssignTarget::Var("x".into())],
-        vec![Expr::BinOp(
+        vec![e(ExprKind::BinOp(
             BinOp::Add,
-            Box::new(Expr::Var("x".into())),
-            Box::new(Expr::IntLit(1)),
-        )],
-    );
-    assert_eq!(render_flat(&sexp_stmt(&s)), "(= x (+ x 1))");
+            Box::new(e(ExprKind::Var("x".into()))),
+            Box::new(e(ExprKind::IntLit(1))),
+        ))],
+    ));
+    assert_eq!(render_flat(&sexp_stmt(&st)), "(= x (+ x 1))");
 }
 
 #[test]
 fn test_decl_init_stmt() {
-    // x: int = 2  →  (= (x int) 2)
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![AssignTarget::Decl("x".into(), Type::Int)],
-        vec![Expr::IntLit(2)],
-    );
-    assert_eq!(render_flat(&sexp_stmt(&s)), "(= (x int) 2)");
+        vec![e(ExprKind::IntLit(2))],
+    ));
+    assert_eq!(render_flat(&sexp_stmt(&st)), "(= (x int) 2)");
 }
 
 #[test]
 fn test_multi_decl_assign() {
-    // b: bool, i:int = f(x)  →  (= ((b bool) (i int)) (f x))
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![
             AssignTarget::Decl("b".into(), Type::Bool),
             AssignTarget::Decl("i".into(), Type::Int),
         ],
-        vec![Expr::FuncCall("f".into(), vec![Expr::Var("x".into())])],
-    );
-    assert_eq!(render_flat(&sexp_stmt(&s)), "(= ((b bool) (i int)) (f x))");
+        vec![e(ExprKind::FuncCall("f".into(), vec![e(ExprKind::Var("x".into()))]))],
+    ));
+    assert_eq!(render_flat(&sexp_stmt(&st)), "(= ((b bool) (i int)) (f x))");
 }
 
 #[test]
 fn test_discard_multi_assign() {
-    // _, i: int = foo()  →  (= (_ (i int)) (foo))
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![
             AssignTarget::Discard,
             AssignTarget::Decl("i".into(), Type::Int),
         ],
-        vec![Expr::FuncCall("foo".into(), vec![])],
-    );
-    assert_eq!(render_flat(&sexp_stmt(&s)), "(= (_ (i int)) (foo))");
+        vec![e(ExprKind::FuncCall("foo".into(), vec![]))],
+    ));
+    assert_eq!(render_flat(&sexp_stmt(&st)), "(= (_ (i int)) (foo))");
 }
 
 #[test]
 fn test_proc_call() {
-    // print("Hello")  →  (print "Hello")
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![],
-        vec![Expr::FuncCall(
+        vec![e(ExprKind::FuncCall(
             "print".into(),
-            vec![Expr::StringLit("Hello".into())],
-        )],
-    );
-    assert_eq!(render_flat(&sexp_stmt(&s)), "(print \"Hello\")");
+            vec![e(ExprKind::StringLit("Hello".into()))],
+        ))],
+    ));
+    assert_eq!(render_flat(&sexp_stmt(&st)), "(print \"Hello\")");
 }
 
 #[test]
 fn test_array_index_assign() {
-    // a[n] = n  →  (= ([] a n) n)
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![AssignTarget::ArrayIndex(
             "a".into(),
-            vec![Expr::Var("n".into())],
+            vec![e(ExprKind::Var("n".into()))],
         )],
-        vec![Expr::Var("n".into())],
-    );
-    assert_eq!(render_flat(&sexp_stmt(&s)), "(= ([] a n) n)");
+        vec![e(ExprKind::Var("n".into()))],
+    ));
+    assert_eq!(render_flat(&sexp_stmt(&st)), "(= ([] a n) n)");
 }
 
 #[test]
 fn test_if_else() {
-    // if (a < b) a = 1 else a = 2
-    let s = Stmt::If(
-        Expr::BinOp(
+    let st = s(StmtKind::If(
+        e(ExprKind::BinOp(
             BinOp::Lt,
-            Box::new(Expr::Var("a".into())),
-            Box::new(Expr::Var("b".into())),
-        ),
-        Box::new(Stmt::Assign(
-            vec![AssignTarget::Var("a".into())],
-            vec![Expr::IntLit(1)],
+            Box::new(e(ExprKind::Var("a".into()))),
+            Box::new(e(ExprKind::Var("b".into()))),
         )),
-        Some(Box::new(Stmt::Assign(
+        Box::new(s(StmtKind::Assign(
             vec![AssignTarget::Var("a".into())],
-            vec![Expr::IntLit(2)],
+            vec![e(ExprKind::IntLit(1))],
         ))),
-    );
+        Some(Box::new(s(StmtKind::Assign(
+            vec![AssignTarget::Var("a".into())],
+            vec![e(ExprKind::IntLit(2))],
+        )))),
+    ));
     assert_eq!(
-        render_flat(&sexp_stmt(&s)),
+        render_flat(&sexp_stmt(&st)),
         "(if (< a b) (= a 1) (= a 2))"
     );
 }
 
 #[test]
 fn test_while_block() {
-    // while (n > 0) { n = n - 1 }
-    let s = Stmt::While(
-        Expr::BinOp(
+    let st = s(StmtKind::While(
+        e(ExprKind::BinOp(
             BinOp::Gt,
-            Box::new(Expr::Var("n".into())),
-            Box::new(Expr::IntLit(0)),
-        ),
-        Box::new(Stmt::Block(Block {
-            stmts: vec![Stmt::Assign(
+            Box::new(e(ExprKind::Var("n".into()))),
+            Box::new(e(ExprKind::IntLit(0))),
+        )),
+        Box::new(s(StmtKind::Block(Block {
+            stmts: vec![s(StmtKind::Assign(
                 vec![AssignTarget::Var("n".into())],
-                vec![Expr::BinOp(
+                vec![e(ExprKind::BinOp(
                     BinOp::Sub,
-                    Box::new(Expr::Var("n".into())),
-                    Box::new(Expr::IntLit(1)),
-                )],
-            )],
+                    Box::new(e(ExprKind::Var("n".into()))),
+                    Box::new(e(ExprKind::IntLit(1))),
+                ))],
+            ))],
             return_val: None,
-        })),
-    );
+        }))),
+    ));
     assert_eq!(
-        render_flat(&sexp_stmt(&s)),
+        render_flat(&sexp_stmt(&st)),
         "(while (> n 0) ((= n (- n 1))))"
     );
 }
 
 #[test]
 fn test_return_in_block() {
-    // { return pred, expr }  →  ((return pred expr))
     let block = Block {
         stmts: vec![],
         return_val: Some(vec![
-            Expr::Var("pred".into()),
-            Expr::Var("expr".into()),
+            e(ExprKind::Var("pred".into())),
+            e(ExprKind::Var("expr".into())),
         ]),
     };
     assert_eq!(render_flat(&sexp_block(&block)), "((return pred expr))");
@@ -295,7 +278,6 @@ fn test_interface() {
     };
     let out = sexp_interface(&iface);
     let expected = "((print ((str ([] int))) ()) (readln () (([] int))))";
-    // Interface format is (( methods... )) — two levels of parens
     assert_eq!(normalize(&out), normalize(&format!("({})", expected)));
 }
 
@@ -312,7 +294,6 @@ fn test_char_lit() {
 
 #[test]
 fn test_gcd_program() {
-    // gcd(a:int, b:int):int { while (a != 0) { if (a<b) b=b-a else a=a-b } return b }
     let p = Program {
         uses: vec![],
         items: vec![TopLevelItem::Func(FuncDef {
@@ -323,40 +304,40 @@ fn test_gcd_program() {
             ],
             returns: vec![Type::Int],
             body: Block {
-                stmts: vec![Stmt::While(
-                    Expr::BinOp(
+                stmts: vec![s(StmtKind::While(
+                    e(ExprKind::BinOp(
                         BinOp::Ne,
-                        Box::new(Expr::Var("a".into())),
-                        Box::new(Expr::IntLit(0)),
-                    ),
-                    Box::new(Stmt::Block(Block {
-                        stmts: vec![Stmt::If(
-                            Expr::BinOp(
+                        Box::new(e(ExprKind::Var("a".into()))),
+                        Box::new(e(ExprKind::IntLit(0))),
+                    )),
+                    Box::new(s(StmtKind::Block(Block {
+                        stmts: vec![s(StmtKind::If(
+                            e(ExprKind::BinOp(
                                 BinOp::Lt,
-                                Box::new(Expr::Var("a".into())),
-                                Box::new(Expr::Var("b".into())),
-                            ),
-                            Box::new(Stmt::Assign(
-                                vec![AssignTarget::Var("b".into())],
-                                vec![Expr::BinOp(
-                                    BinOp::Sub,
-                                    Box::new(Expr::Var("b".into())),
-                                    Box::new(Expr::Var("a".into())),
-                                )],
+                                Box::new(e(ExprKind::Var("a".into()))),
+                                Box::new(e(ExprKind::Var("b".into()))),
                             )),
-                            Some(Box::new(Stmt::Assign(
-                                vec![AssignTarget::Var("a".into())],
-                                vec![Expr::BinOp(
+                            Box::new(s(StmtKind::Assign(
+                                vec![AssignTarget::Var("b".into())],
+                                vec![e(ExprKind::BinOp(
                                     BinOp::Sub,
-                                    Box::new(Expr::Var("a".into())),
-                                    Box::new(Expr::Var("b".into())),
-                                )],
+                                    Box::new(e(ExprKind::Var("b".into()))),
+                                    Box::new(e(ExprKind::Var("a".into()))),
+                                ))],
                             ))),
-                        )],
+                            Some(Box::new(s(StmtKind::Assign(
+                                vec![AssignTarget::Var("a".into())],
+                                vec![e(ExprKind::BinOp(
+                                    BinOp::Sub,
+                                    Box::new(e(ExprKind::Var("a".into()))),
+                                    Box::new(e(ExprKind::Var("b".into()))),
+                                ))],
+                            )))),
+                        ))],
                         return_val: None,
-                    })),
-                )],
-                return_val: Some(vec![Expr::Var("b".into())]),
+                    }))),
+                ))],
+                return_val: Some(vec![e(ExprKind::Var("b".into()))]),
             },
         })],
     };

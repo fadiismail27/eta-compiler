@@ -1,8 +1,17 @@
 use crate::checker::context::Context;
-use crate::parser::ast::{AssignTarget, BinOp, Expr, IdentStmtRest, Stmt, Type, UnaryOp, Program, TopLevelItem, FuncDef, Block};
+use crate::parser::ast::{
+    AssignTarget, BinOp, Expr, ExprKind, Block, FuncDef, Program, Span, Spanned,
+    StmtKind, TopLevelItem, Type, UnaryOp,
+};
 
 #[derive(Clone, Debug)]
-pub enum SemanticError {
+pub struct SemanticError {
+    pub span: Span,
+    pub kind: SemanticErrorKind,
+}
+
+#[derive(Clone, Debug)]
+pub enum SemanticErrorKind {
     // 1. Scope Errors
     UndeclaredIdentifier {
         name: String,
@@ -10,7 +19,6 @@ pub enum SemanticError {
     DuplicateDeclaration {
         name: String,
     },
-
     // 2. Type Errors
     TypeMismatch {
         expected: SemanticType,
@@ -31,7 +39,6 @@ pub enum SemanticError {
     ConditionNotBoolean {
         found: SemanticType,
     },
-
     // 3. Function Errors
     NotCallable {
         found: SemanticType,
@@ -51,12 +58,17 @@ pub enum SemanticError {
     InvalidBaseType {
         found: SemanticType,
     },
-
     // 4. Control Flow Errors
     BreakOutsideLoop,
     MissingReturn {
         expected: SemanticType,
     },
+}
+
+impl SemanticErrorKind {
+    pub fn at(self, span: Span) -> SemanticError {
+        SemanticError { span, kind: self }
+    }
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -68,94 +80,38 @@ pub enum SemanticType {
         ret: Box<SemanticType>,
     },
     EmptyArray,
-
     Unit,
     Void,
-
-    Error,
 }
 
-impl std::fmt::Display for SemanticError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SemanticError::UndeclaredIdentifier { name } => {
-                write!(f, "Name {} cannot be resolved", name)
-            }
-            SemanticError::DuplicateDeclaration { name } => {
-                write!(f, "Duplicate declaration of {}", name)
-            }
-            SemanticError::TypeMismatch { expected, found } => {
-                write!(f, "Mismatched types: expected {:?}, found {:?}", expected, found)
-            }
-            SemanticError::ExpectedArray { found } => {
-                write!(f, "Expected array type, found {:?}", found)
-            }
-            SemanticError::InvalidBinaryOp { op, left, right } => {
-                write!(f, "Operands of {:?} have incompatible types {:?} and {:?}", op, left, right)
-            }
-            SemanticError::InvalidUnaryOp { op, exp } => {
-                write!(f, "Operand of {:?} has incompatible type {:?}", op, exp)
-            }
-            SemanticError::ConditionNotBoolean { found } => {
-                write!(f, "Condition must be boolean, found {:?}", found)
-            }
-            SemanticError::NotCallable { found } => {
-                write!(f, "Cannot call non-function type {:?}", found)
-            }
-            SemanticError::ArgumentCountMismatch { expected, found } => {
-                write!(f, "Mismatched number of values: expected {}, found {}", expected, found)
-            }
-            SemanticError::ArgumentTypeMismatch { param_index, expected, found } => {
-                write!(f, "Mismatched type for argument {}: expected {:?}, found {:?}", param_index, expected, found)
-            }
-            SemanticError::InvalidReturnType { found } => {
-                write!(f, "Invalid return type {:?}", found)
-            }
-            SemanticError::InvalidBaseType { found } => {
-                write!(f, "Invalid base type {:?}", found)
-            }
-            SemanticError::BreakOutsideLoop => {
-                write!(f, "Break statement outside of loop")
-            }
-            SemanticError::MissingReturn { expected } => {
-                write!(f, "Missing return statement, expected {:?}", expected)
-            }
-        }
-    }
-}
+type TypeResult = Result<SemanticType, SemanticError>;
 
 pub struct TypeChecker {
-    pub errors: Vec<SemanticError>,
     context: Context,
     current_return_type: Option<SemanticType>,
 }
+
 impl TypeChecker {
     pub fn new() -> Self {
         TypeChecker {
-            errors: Vec::new(),
             context: Context,
             current_return_type: None,
         }
     }
 
-    // Entry to typechecking a program.
-    // All errors encountered will be pushed to errors vector
-    pub fn check_program(&mut self, program: &Program) {
+    pub fn check_program(&mut self, program: &Program) -> Result<(), SemanticError> {
         // Pass 1: collect all signatures into context
         for item in &program.items {
             match item {
                 TopLevelItem::Func(func) => {
                     if self.context.search(&func.name).is_some() {
-                        self.errors.push(SemanticError::DuplicateDeclaration {
+                        return Err(SemanticErrorKind::DuplicateDeclaration {
                             name: func.name.clone(),
-                        });
-                        continue;
+                        }.at(Span::dummy()));
                     }
-                    let ret = if func.returns.is_empty() {
-                        SemanticType::Tuple(vec![]) // procedure
-                    } else {
-                        SemanticType::Tuple(func.returns.clone())
-                    };
+
+                    let ret = SemanticType::Tuple(func.returns.clone());
+
                     self.context.push(
                         &func.name,
                         &SemanticType::Func {
@@ -164,13 +120,14 @@ impl TypeChecker {
                         },
                     );
                 }
+
                 TopLevelItem::Global(global) => {
                     if self.context.search(&global.name).is_some() {
-                        self.errors.push(SemanticError::DuplicateDeclaration {
+                        return Err(SemanticErrorKind::DuplicateDeclaration {
                             name: global.name.clone(),
-                        });
-                        continue;
+                        }.at(Span::dummy()));
                     }
+
                     self.context
                         .push(&global.name, &SemanticType::Single(global.ty.clone()));
                 }
@@ -180,422 +137,342 @@ impl TypeChecker {
         // Pass 2: check each body
         for item in &program.items {
             match item {
-                TopLevelItem::Func(func) => self.check_func_def(func),
+                TopLevelItem::Func(func) => self.check_func_def(func)?,
                 TopLevelItem::Global(global) => {
-                    // spec: init must be a literal
                     if let Some(init) = &global.init {
-                        let t = self.check_expr(init);
+                        let t = self.check_expr(init)?;
                         let expected = SemanticType::Single(global.ty.clone());
                         if !self.types_compatible(&t, &expected) {
-                            self.errors
-                                .push(SemanticError::TypeMismatch { expected, found: t });
+                            return Err(SemanticErrorKind::TypeMismatch { expected, found: t }
+                                .at(init.span));
                         }
                     }
                 }
             }
         }
+
+        Ok(())
     }
 
     fn types_compatible(&self, actual: &SemanticType, expected: &SemanticType) -> bool {
-        if actual == expected {
-            return true;
-        }
         match (actual, expected) {
+            (a, b) if a == b => true,
             (SemanticType::EmptyArray, SemanticType::Single(Type::Array(_, _))) => true,
-            (SemanticType::Error, _) | (_, SemanticType::Error) => true, // suppress cascading
             _ => false,
         }
     }
 
-    fn check_func_def(&mut self, func: &FuncDef) {
-        // #[derive(Clone, Debug)]
-        // pub struct FuncDef {
-        //     pub name: String,
-        //     pub params: Vec<Param>,
-        //     pub returns: Vec<Type>,
-        //     pub body: Block,
-        // }
-
-        // parameters and types
-        // #[derive(Clone, Debug)]
-        // pub struct Param {
-        //     pub name: String,
-        //     pub ty: Type,
-        // }
-
+    fn check_func_def(&mut self, func: &FuncDef) -> Result<(), SemanticError> {
         let initial_context = self.context.clone();
 
         for param in &func.params {
             if self.context.search(&param.name).is_some() {
-                self.errors.push(SemanticError::DuplicateDeclaration {
+                return Err(SemanticErrorKind::DuplicateDeclaration {
                     name: param.name.clone(),
-                });
+                }.at(Span::dummy()));
             }
-            self.context.push(&param.name, &SemanticType::Single(param.ty.clone()));
+            self.context
+                .push(&param.name, &SemanticType::Single(param.ty.clone()));
         }
 
-        let ret = if func.returns.len() > 0 {
-            SemanticType::Tuple(func.returns.clone())
-        } else {
-            SemanticType::Tuple(vec![])
-        };
+        let ret = SemanticType::Tuple(func.returns.clone());
 
         self.current_return_type = Some(ret.clone());
-        let stmt_type = self.check_stmt(&Stmt::Block(func.body.clone()));
+        let body_stmt = Spanned::dummy(StmtKind::Block(func.body.clone()));
+        let stmt_type = self.check_stmt(&body_stmt)?;
 
-        if func.returns.len() > 0 && stmt_type != SemanticType::Void {
-            self.errors.push(SemanticError::InvalidReturnType { found: stmt_type });
+        if !func.returns.is_empty() && stmt_type != SemanticType::Void {
+            return Err(SemanticErrorKind::MissingReturn { expected: ret }
+                .at(Span::dummy()));
         }
-        self.context = initial_context.clone();
 
+        self.context = initial_context;
         self.current_return_type = None;
+        Ok(())
     }
 
-    fn check_expr(&mut self, exp: &Expr) -> SemanticType {
-        match exp {
-            Expr::Var(var) => match self.context.search(var) {
-                Some(typ) => typ.clone(),
-                None => {
-                    self.errors
-                        .push(SemanticError::UndeclaredIdentifier { name: var.clone() });
-                    SemanticType::Error
-                }
+    fn check_expr(&mut self, exp: &Expr) -> TypeResult {
+        let span = exp.span;
+        match &exp.node {
+            ExprKind::Var(var) => match self.context.search(var) {
+                Some(typ) => Ok(typ.clone()),
+                None => Err(SemanticErrorKind::UndeclaredIdentifier { name: var.clone() }
+                    .at(span)),
             },
-            Expr::IntLit(_) | Expr::CharLit(_) => SemanticType::Single(Type::Int),
-            Expr::StringLit(_) => SemanticType::Single(Type::Array(Box::new(Type::Int), None)),
-            Expr::BoolLit(_) => SemanticType::Single(Type::Bool),
+            ExprKind::IntLit(_) | ExprKind::CharLit(_) => {
+                Ok(SemanticType::Single(Type::Int))
+            }
+            ExprKind::StringLit(_) => {
+                Ok(SemanticType::Single(Type::Array(Box::new(Type::Int), None)))
+            }
+            ExprKind::BoolLit(_) => Ok(SemanticType::Single(Type::Bool)),
 
-            Expr::BinOp(op, expr1, expr2) => {
-                let typ1 = self.check_expr(expr1);
-                let typ2 = self.check_expr(expr2);
-
-                // Helper to stop cascading error spam: if a child expression already
-                // threw an error, we don't need to throw another one here.
-                let is_err = typ1 == SemanticType::Error || typ2 == SemanticType::Error;
+            ExprKind::BinOp(op, expr1, expr2) => {
+                let typ1 = self.check_expr(expr1)?;
+                let typ2 = self.check_expr(expr2)?;
 
                 match op {
-                    // match op {
-                    BinOp::Add => {
-                        match (&typ1, &typ2) {
-                            // 1. Int + Int
-                            (SemanticType::Single(Type::Int), SemanticType::Single(Type::Int)) => {
-                                SemanticType::Single(Type::Int)
-                            }
+                    BinOp::Add => match (&typ1, &typ2) {
+                        (
+                            SemanticType::Single(Type::Int),
+                            SemanticType::Single(Type::Int),
+                        ) => Ok(SemanticType::Single(Type::Int)),
 
-                            // 2. Typed Array + Typed Array
-                            (
-                                SemanticType::Single(Type::Array(base1, _)),
-                                SemanticType::Single(Type::Array(base2, _)),
-                            ) => {
-                                if base1 != base2 {
-                                    self.errors.push(SemanticError::TypeMismatch {
-                                        expected: typ1.clone(),
-                                        found: typ2.clone(),
-                                    });
-                                    return SemanticType::Error;
-                                }
-                                SemanticType::Single(Type::Array(base1.clone(), None))
+                        (
+                            SemanticType::Single(Type::Array(base1, _)),
+                            SemanticType::Single(Type::Array(base2, _)),
+                        ) => {
+                            if base1 != base2 {
+                                return Err(SemanticErrorKind::TypeMismatch {
+                                    expected: typ1.clone(),
+                                    found: typ2.clone(),
+                                }.at(span));
                             }
-
-                            // 3. Typed Array + Empty Array (and vice versa)
-                            (SemanticType::Single(Type::Array(_, _)), SemanticType::EmptyArray) => {
-                                typ1.clone()
-                            }
-                            (SemanticType::EmptyArray, SemanticType::Single(Type::Array(_, _))) => {
-                                typ2.clone()
-                            }
-
-                            // 4. Empty Array + Empty Array
-                            (SemanticType::EmptyArray, SemanticType::EmptyArray) => {
-                                SemanticType::EmptyArray
-                            }
-
-                            // Invalid Addition
-                            _ => {
-                                if !is_err {
-                                    self.errors.push(SemanticError::InvalidBinaryOp {
-                                        op: op.clone(),
-                                        left: typ1.clone(),
-                                        right: typ2.clone(),
-                                    });
-                                }
-                                SemanticType::Error
-                            }
+                            Ok(SemanticType::Single(Type::Array(base1.clone(), None)))
                         }
-                    }
+
+                        (
+                            SemanticType::Single(Type::Array(_, _)),
+                            SemanticType::EmptyArray,
+                        ) => Ok(typ1.clone()),
+                        (
+                            SemanticType::EmptyArray,
+                            SemanticType::Single(Type::Array(_, _)),
+                        ) => Ok(typ2.clone()),
+
+                        (SemanticType::EmptyArray, SemanticType::EmptyArray) => {
+                            Ok(SemanticType::EmptyArray)
+                        }
+
+                        _ => Err(SemanticErrorKind::InvalidBinaryOp {
+                            op: op.clone(),
+                            left: typ1.clone(),
+                            right: typ2.clone(),
+                        }.at(span)),
+                    },
                     BinOp::Sub | BinOp::Mul | BinOp::HighMul | BinOp::Div | BinOp::Mod => {
                         if typ1 == SemanticType::Single(Type::Int)
                             && typ2 == SemanticType::Single(Type::Int)
                         {
-                            SemanticType::Single(Type::Int)
+                            Ok(SemanticType::Single(Type::Int))
                         } else {
-                            if !is_err {
-                                self.errors.push(SemanticError::InvalidBinaryOp {
-                                    op: op.clone(),
-                                    left: typ1.clone(),
-                                    right: typ2.clone(),
-                                });
-                            }
-                            SemanticType::Error
+                            Err(SemanticErrorKind::InvalidBinaryOp {
+                                op: op.clone(),
+                                left: typ1,
+                                right: typ2,
+                            }.at(span))
                         }
                     }
                     BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
                         if typ1 == SemanticType::Single(Type::Int)
                             && typ2 == SemanticType::Single(Type::Int)
                         {
-                            SemanticType::Single(Type::Bool)
+                            Ok(SemanticType::Single(Type::Bool))
                         } else {
-                            if !is_err {
-                                self.errors.push(SemanticError::InvalidBinaryOp {
-                                    op: op.clone(),
-                                    left: typ1.clone(),
-                                    right: typ2.clone(),
-                                });
-                            }
-                            SemanticType::Error
+                            Err(SemanticErrorKind::InvalidBinaryOp {
+                                op: op.clone(),
+                                left: typ1,
+                                right: typ2,
+                            }.at(span))
                         }
                     }
-                    BinOp::Eq | BinOp::Ne => {
-                        match (&typ1, &typ2) {
-                            // Exact matches (Int == Int, Bool == Bool, Array == Array)
-                            (t1, t2) if t1 == t2 && !is_err => SemanticType::Single(Type::Bool),
+                    BinOp::Eq | BinOp::Ne => match (&typ1, &typ2) {
+                        (t1, t2) if t1 == t2 => Ok(SemanticType::Single(Type::Bool)),
 
-                            // Comparing typed arrays with empty arrays
-                            (SemanticType::Single(Type::Array(_, _)), SemanticType::EmptyArray) => {
-                                SemanticType::Single(Type::Bool)
-                            }
-                            (SemanticType::EmptyArray, SemanticType::Single(Type::Array(_, _))) => {
-                                SemanticType::Single(Type::Bool)
-                            }
+                        (
+                            SemanticType::Single(Type::Array(_, _)),
+                            SemanticType::EmptyArray,
+                        ) => Ok(SemanticType::Single(Type::Bool)),
+                        (
+                            SemanticType::EmptyArray,
+                            SemanticType::Single(Type::Array(_, _)),
+                        ) => Ok(SemanticType::Single(Type::Bool)),
 
-                            _ => {
-                                if !is_err {
-                                    self.errors.push(SemanticError::TypeMismatch {
-                                        expected: typ1.clone(),
-                                        found: typ2.clone(),
-                                    });
-                                }
-                                SemanticType::Error
-                            }
-                        }
-                    }
+                        _ => Err(SemanticErrorKind::TypeMismatch {
+                            expected: typ1,
+                            found: typ2,
+                        }.at(span)),
+                    },
                     BinOp::Or | BinOp::And => {
                         if typ1 == SemanticType::Single(Type::Bool)
                             && typ2 == SemanticType::Single(Type::Bool)
                         {
-                            SemanticType::Single(Type::Bool)
+                            Ok(SemanticType::Single(Type::Bool))
                         } else {
-                            if !is_err {
-                                self.errors.push(SemanticError::InvalidBinaryOp {
-                                    op: op.clone(),
-                                    left: typ1.clone(),
-                                    right: typ2.clone(),
-                                });
-                            }
-                            SemanticType::Error
+                            Err(SemanticErrorKind::InvalidBinaryOp {
+                                op: op.clone(),
+                                left: typ1,
+                                right: typ2,
+                            }.at(span))
                         }
                     }
                 }
             }
-            Expr::UnaryOp(op, exp) => {
-                let typ = self.check_expr(exp);
+            ExprKind::UnaryOp(op, inner) => {
+                let typ = self.check_expr(inner)?;
                 match op {
                     UnaryOp::Neg => {
                         if typ != SemanticType::Single(Type::Int) {
-                            self.errors.push(SemanticError::InvalidUnaryOp {
+                            return Err(SemanticErrorKind::InvalidUnaryOp {
                                 op: op.clone(),
-                                exp: typ.clone(),
-                            });
-                            return SemanticType::Error;
+                                exp: typ,
+                            }.at(span));
                         }
-                        SemanticType::Single(Type::Int)
+                        Ok(SemanticType::Single(Type::Int))
                     }
                     UnaryOp::Not => {
                         if typ != SemanticType::Single(Type::Bool) {
-                            self.errors.push(SemanticError::InvalidUnaryOp {
+                            return Err(SemanticErrorKind::InvalidUnaryOp {
                                 op: op.clone(),
-                                exp: typ.clone(),
-                            });
-                            return SemanticType::Error;
+                                exp: typ,
+                            }.at(span));
                         }
-                        SemanticType::Single(Type::Bool)
+                        Ok(SemanticType::Single(Type::Bool))
                     }
                 }
             }
-            // }
-            // }
-            // },
-            Expr::FuncCall(s, e_vec) => {
+            ExprKind::FuncCall(s, e_vec) => {
                 let func = self.context.search(s).cloned();
                 match func {
                     Some(SemanticType::Func { args, ret }) => {
-                        // Expression context: must return exactly one value
                         match ret.as_ref() {
                             SemanticType::Tuple(types) if types.len() == 1 => {
                                 if args.len() != e_vec.len() {
-                                    self.errors.push(SemanticError::ArgumentCountMismatch {
+                                    return Err(SemanticErrorKind::ArgumentCountMismatch {
                                         expected: args.len(),
                                         found: e_vec.len(),
-                                    });
-                                    return SemanticType::Error;
+                                    }.at(span));
                                 }
                                 for (i, e) in e_vec.iter().enumerate() {
-                                    let actual = self.check_expr(e);
+                                    let actual = self.check_expr(e)?;
                                     let expected = SemanticType::Single(args[i].clone());
                                     if !self.types_compatible(&actual, &expected) {
-                                        self.errors.push(SemanticError::ArgumentTypeMismatch {
+                                        return Err(SemanticErrorKind::ArgumentTypeMismatch {
                                             param_index: i,
                                             expected,
                                             found: actual,
-                                        });
-                                        return SemanticType::Error;
+                                        }.at(e.span));
                                     }
                                 }
-                                SemanticType::Single(types[0].clone())
+                                Ok(SemanticType::Single(types[0].clone()))
                             }
-                            _ => {
-                                // Procedure or multi-return used in expression context
-                                self.errors.push(SemanticError::InvalidReturnType {
-                                    found: *ret,
-                                });
-                                SemanticType::Error
-                            }
+                            _ => Err(SemanticErrorKind::InvalidReturnType {
+                                found: *ret,
+                            }.at(span)),
                         }
                     }
-                    Some(x) => {
-                        self.errors.push(SemanticError::NotCallable { found: x });
-                        SemanticType::Error
-                    }
-                    None => {
-                        self.errors.push(SemanticError::UndeclaredIdentifier { name: s.clone() });
-                        SemanticType::Error
-                    }
+                    Some(x) => Err(SemanticErrorKind::NotCallable { found: x }.at(span)),
+                    None => Err(SemanticErrorKind::UndeclaredIdentifier {
+                        name: s.clone(),
+                    }.at(span)),
                 }
             }
 
-            Expr::Length(exp) => {
-                let typ = self.check_expr(exp);
+            ExprKind::Length(inner) => {
+                let typ = self.check_expr(inner)?;
                 match typ {
                     SemanticType::Single(Type::Array(_, _)) | SemanticType::EmptyArray => {
-                        SemanticType::Single(Type::Int)
+                        Ok(SemanticType::Single(Type::Int))
                     }
-                    _ => {
-                        self.errors
-                            .push(SemanticError::ExpectedArray { found: typ });
-                        SemanticType::Error
-                    }
+                    _ => Err(SemanticErrorKind::ExpectedArray { found: typ }.at(span)),
                 }
             }
-            Expr::Index(exp1, exp2) => {
-                let typ1 = self.check_expr(exp1);
-                let typ2 = self.check_expr(exp2);
+            ExprKind::Index(exp1, exp2) => {
+                let typ1 = self.check_expr(exp1)?;
+                let typ2 = self.check_expr(exp2)?;
 
                 match typ1 {
                     SemanticType::Single(Type::Array(base, _)) => match typ2 {
-                        SemanticType::Single(Type::Int) => SemanticType::Single(*base),
-                        _ => {
-                            self.errors.push(SemanticError::TypeMismatch {
-                                expected: SemanticType::Single(Type::Int),
-                                found: typ2,
-                            });
-                            SemanticType::Error
-                        }
+                        SemanticType::Single(Type::Int) => Ok(SemanticType::Single(*base)),
+                        _ => Err(SemanticErrorKind::TypeMismatch {
+                            expected: SemanticType::Single(Type::Int),
+                            found: typ2,
+                        }.at(exp2.span)),
                     },
-                    _ => {
-                        self.errors
-                            .push(SemanticError::ExpectedArray { found: typ1 });
-                        SemanticType::Error
-                    }
+                    _ => Err(SemanticErrorKind::ExpectedArray { found: typ1 }.at(exp1.span)),
                 }
             }
 
-            Expr::ArrayConstructor(exp_lst) => {
-                if exp_lst.len() == 0 {
-                    return SemanticType::EmptyArray;
+            ExprKind::ArrayConstructor(exp_lst) => {
+                if exp_lst.is_empty() {
+                    return Ok(SemanticType::EmptyArray);
                 }
 
-                let base_typ = self.check_expr(&exp_lst[0]).clone();
+                let base_typ = self.check_expr(&exp_lst[0])?;
 
                 for i in 1..exp_lst.len() {
-                    let typ = self.check_expr(&exp_lst[i]);
+                    let typ = self.check_expr(&exp_lst[i])?;
 
                     if typ != base_typ {
-                        self.errors.push(SemanticError::TypeMismatch {
+                        return Err(SemanticErrorKind::TypeMismatch {
                             expected: base_typ,
                             found: typ,
-                        });
-                        return SemanticType::Error;
+                        }.at(exp_lst[i].span));
                     }
                 }
 
                 match base_typ {
-                    SemanticType::Single(t) => SemanticType::Single(Type::Array(Box::new(t), None)),
-                    SemanticType::EmptyArray => SemanticType::EmptyArray,
-                    _ => {
-                        self.errors
-                            .push(SemanticError::InvalidBaseType { found: base_typ });
-                        SemanticType::Error
+                    SemanticType::Single(t) => {
+                        Ok(SemanticType::Single(Type::Array(Box::new(t), None)))
                     }
+                    SemanticType::EmptyArray => Ok(SemanticType::EmptyArray),
+                    _ => Err(SemanticErrorKind::InvalidBaseType { found: base_typ }
+                        .at(span)),
                 }
             }
         }
     }
 
-    fn check_stmt(&mut self, stmt: &Stmt) -> SemanticType {
-        // If(Expr, Box<Stmt>, Option<Box<Stmt>>),
-        match stmt {
-            Stmt::If(expr, t_stmt, f_stmt) => {
+    fn check_stmt(&mut self, stmt: &Spanned<StmtKind>) -> TypeResult {
+        let span = stmt.span;
+        match &stmt.node {
+            StmtKind::If(expr, t_stmt, f_stmt) => {
                 let initial_context = self.context.clone();
-                let guard = self.check_expr(expr);
+                let guard = self.check_expr(expr)?;
 
                 if guard != SemanticType::Single(Type::Bool) {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: SemanticType::Single(Type::Bool),
-                        found: guard,
-                    });
-                    return SemanticType::Error;
+                    return Err(SemanticErrorKind::ConditionNotBoolean { found: guard }
+                        .at(expr.span));
                 }
 
-                let t_return = self.check_stmt(&*t_stmt);
+                let t_return = self.check_stmt(t_stmt)?;
                 self.context = initial_context.clone();
 
                 match f_stmt {
                     Some(s) => {
-                        let f_return = self.check_stmt(&*s);
+                        let f_return = self.check_stmt(s)?;
                         self.context = initial_context;
 
-                        if t_return == SemanticType::Void && f_return == SemanticType::Void {
-                            return SemanticType::Void;
+                        match (t_return, f_return) {
+                            (SemanticType::Void, SemanticType::Void) => {
+                                Ok(SemanticType::Void)
+                            }
+                            _ => Ok(SemanticType::Unit),
                         }
-                        SemanticType::Unit
                     }
-                    None => SemanticType::Unit,
+                    None => Ok(SemanticType::Unit),
                 }
             }
-            // While(Expr, Box<Stmt>),
-            Stmt::While(expr, s) => {
+            StmtKind::While(expr, s) => {
                 let initial_context = self.context.clone();
-                let guard = self.check_expr(expr);
+                let guard = self.check_expr(expr)?;
 
                 if guard != SemanticType::Single(Type::Bool) {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: SemanticType::Single(Type::Bool),
-                        found: guard,
-                    });
-                    return SemanticType::Error;
+                    return Err(SemanticErrorKind::ConditionNotBoolean { found: guard }
+                        .at(expr.span));
                 }
-                self.check_stmt(s);
-                self.context = initial_context.clone();
 
-                SemanticType::Unit
+                self.check_stmt(s)?;
+                self.context = initial_context;
+
+                Ok(SemanticType::Unit)
             }
-            // Block(Block),
-            Stmt::Block(Block { stmts, return_val }) => {
+            StmtKind::Block(Block { stmts, return_val }) => {
                 let initial_context = self.context.clone();
                 let mut result = SemanticType::Unit;
 
                 for (i, s) in stmts.iter().enumerate() {
-                    let s_type = self.check_stmt(s);
+                    let s_type = self.check_stmt(s)?;
 
                     if i == stmts.len() - 1 && return_val.is_none() {
                         result = s_type;
@@ -610,65 +487,65 @@ impl TypeChecker {
 
                     if let Some(types) = expected_types {
                         if ret_exprs.len() != types.len() {
-                            self.errors.push(SemanticError::ArgumentCountMismatch {
+                            return Err(SemanticErrorKind::ArgumentCountMismatch {
                                 expected: types.len(),
                                 found: ret_exprs.len(),
-                            });
-                        } else {
-                            for (i, expr) in ret_exprs.iter().enumerate() {
-                                let actual = self.check_expr(expr);
-                                let expected = SemanticType::Single(types[i].clone());
-                                if !self.types_compatible(&actual, &expected) {
-                                    self.errors.push(SemanticError::TypeMismatch {
-                                        expected,
-                                        found: actual,
-                                    });
-                                }
+                            }.at(span));
+                        }
+                        for (i, expr) in ret_exprs.iter().enumerate() {
+                            let actual = self.check_expr(expr)?;
+                            let expected = SemanticType::Single(types[i].clone());
+                            if !self.types_compatible(&actual, &expected) {
+                                return Err(SemanticErrorKind::TypeMismatch {
+                                    expected,
+                                    found: actual,
+                                }.at(expr.span));
                             }
                         }
                     }
-
                     result = SemanticType::Void;
                 }
 
                 self.context = initial_context;
-                result
-            },
-            Stmt::Assign(target_lst, expr_lst) => {
+                Ok(result)
+            }
+            StmtKind::Assign(target_lst, expr_lst) => {
                 // Case 1: Procedure call — targets=[], exprs=[FuncCall(...)]
                 if target_lst.is_empty() && expr_lst.len() == 1 {
-                    if let Expr::FuncCall(name, args) = &expr_lst[0] {
+                    if let ExprKind::FuncCall(name, args) = &expr_lst[0].node {
                         let func = self.context.search(name).cloned();
                         match func {
                             Some(SemanticType::Func { args: param_types, ret }) => {
                                 if args.len() != param_types.len() {
-                                    self.errors.push(SemanticError::ArgumentCountMismatch {
+                                    return Err(SemanticErrorKind::ArgumentCountMismatch {
                                         expected: param_types.len(),
                                         found: args.len(),
-                                    });
-                                    return SemanticType::Error;
+                                    }.at(expr_lst[0].span));
                                 }
                                 for (i, arg) in args.iter().enumerate() {
-                                    let actual = self.check_expr(arg);
-                                    let expected = SemanticType::Single(param_types[i].clone());
+                                    let actual = self.check_expr(arg)?;
+                                    let expected =
+                                        SemanticType::Single(param_types[i].clone());
                                     if !self.types_compatible(&actual, &expected) {
-                                        self.errors.push(SemanticError::ArgumentTypeMismatch {
-                                            param_index: i,
-                                            expected,
-                                            found: actual,
-                                        });
-                                        return SemanticType::Error;
+                                        return Err(
+                                            SemanticErrorKind::ArgumentTypeMismatch {
+                                                param_index: i,
+                                                expected,
+                                                found: actual,
+                                            }.at(arg.span),
+                                        );
                                     }
                                 }
-                                return SemanticType::Unit;
+                                return Ok(SemanticType::Unit);
                             }
                             Some(x) => {
-                                self.errors.push(SemanticError::NotCallable { found: x });
-                                return SemanticType::Error;
+                                return Err(SemanticErrorKind::NotCallable { found: x }
+                                    .at(expr_lst[0].span))
                             }
                             None => {
-                                self.errors.push(SemanticError::UndeclaredIdentifier { name: name.clone() });
-                                return SemanticType::Error;
+                                return Err(SemanticErrorKind::UndeclaredIdentifier {
+                                    name: name.clone(),
+                                }.at(expr_lst[0].span))
                             }
                         }
                     }
@@ -678,81 +555,90 @@ impl TypeChecker {
                 if target_lst.len() == 1 && expr_lst.is_empty() {
                     if let AssignTarget::Decl(name, ty) = &target_lst[0] {
                         if self.context.search(name).is_some() {
-                            self.errors.push(SemanticError::DuplicateDeclaration { name: name.clone() });
-                            return SemanticType::Error;
+                            return Err(SemanticErrorKind::DuplicateDeclaration {
+                                name: name.clone(),
+                            }.at(span));
                         }
-                        self.context.push(name, &SemanticType::Single(ty.clone()));
-                        return SemanticType::Unit;
+                        self.context
+                            .push(name, &SemanticType::Single(ty.clone()));
+                        return Ok(SemanticType::Unit);
                     }
                 }
 
-                // Case 3: Multi-assign from function call — targets=[d1,...,dn], exprs=[FuncCall(...)]
+                // Case 3: Multi-assign from function call
                 if target_lst.len() > 1 && expr_lst.len() == 1 {
-                    if let Expr::FuncCall(name, args) = &expr_lst[0] {
+                    if let ExprKind::FuncCall(name, args) = &expr_lst[0].node {
                         let func = self.context.search(name).cloned();
                         match func {
                             Some(SemanticType::Func { args: param_types, ret }) => {
-                                // check arguments
                                 if args.len() != param_types.len() {
-                                    self.errors.push(SemanticError::ArgumentCountMismatch {
+                                    return Err(SemanticErrorKind::ArgumentCountMismatch {
                                         expected: param_types.len(),
                                         found: args.len(),
-                                    });
-                                    return SemanticType::Error;
+                                    }.at(expr_lst[0].span));
                                 }
                                 for (i, arg) in args.iter().enumerate() {
-                                    let actual = self.check_expr(arg);
-                                    let expected = SemanticType::Single(param_types[i].clone());
+                                    let actual = self.check_expr(arg)?;
+                                    let expected =
+                                        SemanticType::Single(param_types[i].clone());
                                     if !self.types_compatible(&actual, &expected) {
-                                        self.errors.push(SemanticError::ArgumentTypeMismatch {
-                                            param_index: i,
-                                            expected,
-                                            found: actual,
-                                        });
-                                        return SemanticType::Error;
+                                        return Err(
+                                            SemanticErrorKind::ArgumentTypeMismatch {
+                                                param_index: i,
+                                                expected,
+                                                found: actual,
+                                            }.at(arg.span),
+                                        );
                                     }
                                 }
-                                // check return types match targets
                                 match ret.as_ref() {
                                     SemanticType::Tuple(ret_types) => {
                                         if target_lst.len() != ret_types.len() {
-                                            self.errors.push(SemanticError::ArgumentCountMismatch {
-                                                expected: ret_types.len(),
-                                                found: target_lst.len(),
-                                            });
-                                            return SemanticType::Error;
+                                            return Err(
+                                                SemanticErrorKind::ArgumentCountMismatch {
+                                                    expected: ret_types.len(),
+                                                    found: target_lst.len(),
+                                                }.at(span),
+                                            );
                                         }
                                         for (i, target) in target_lst.iter().enumerate() {
-                                            let ret_type = SemanticType::Single(ret_types[i].clone());
+                                            let ret_type =
+                                                SemanticType::Single(ret_types[i].clone());
                                             match target {
-                                                AssignTarget::Discard => {return SemanticType::Unit},
+                                                AssignTarget::Discard => {}
                                                 _ => {
-                                                    let target_type = self.check_assign_target(target);
-                                                    if !self.types_compatible(&ret_type, &target_type) {
-                                                        self.errors.push(SemanticError::TypeMismatch {
-                                                            expected: target_type,
-                                                            found: ret_type,
-                                                        });
-                                                        return SemanticType::Error;
+                                                    let target_type =
+                                                        self.check_assign_target(target, span)?;
+                                                    if !self
+                                                        .types_compatible(&ret_type, &target_type)
+                                                    {
+                                                        return Err(
+                                                            SemanticErrorKind::TypeMismatch {
+                                                                expected: target_type,
+                                                                found: ret_type,
+                                                            }.at(span),
+                                                        );
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                     _ => {
-                                        self.errors.push(SemanticError::InvalidReturnType { found: (*ret).clone() });
-                                        return SemanticType::Error;
+                                        return Err(SemanticErrorKind::InvalidReturnType {
+                                            found: (*ret).clone(),
+                                        }.at(expr_lst[0].span))
                                     }
                                 }
-                                return SemanticType::Unit;
+                                return Ok(SemanticType::Unit);
                             }
                             Some(x) => {
-                                self.errors.push(SemanticError::NotCallable { found: x });
-                                return SemanticType::Error;
+                                return Err(SemanticErrorKind::NotCallable { found: x }
+                                    .at(expr_lst[0].span))
                             }
                             None => {
-                                self.errors.push(SemanticError::UndeclaredIdentifier { name: name.clone() });
-                                return SemanticType::Error;
+                                return Err(SemanticErrorKind::UndeclaredIdentifier {
+                                    name: name.clone(),
+                                }.at(expr_lst[0].span))
                             }
                         }
                     }
@@ -760,108 +646,84 @@ impl TypeChecker {
 
                 // Case 4: General n-to-n assignment
                 if target_lst.len() != expr_lst.len() {
-                    self.errors.push(SemanticError::ArgumentCountMismatch {
+                    return Err(SemanticErrorKind::ArgumentCountMismatch {
                         expected: target_lst.len(),
                         found: expr_lst.len(),
-                    });
-                    return SemanticType::Error;
+                    }.at(span));
                 }
 
-                for (i, (target, expr)) in target_lst.iter().zip(expr_lst.iter()).enumerate() {
-                    let expr_typ = self.check_expr(expr);
+                for (target, expr) in target_lst.iter().zip(expr_lst.iter()) {
+                    let expr_typ = self.check_expr(expr)?;
                     match target {
-                        AssignTarget::Discard => {return SemanticType::Unit},
+                        AssignTarget::Discard => {}
                         _ => {
-                            let target_typ = self.check_assign_target(target);
+                            let target_typ = self.check_assign_target(target, span)?;
                             if !self.types_compatible(&expr_typ, &target_typ) {
-                                self.errors.push(SemanticError::TypeMismatch {
+                                return Err(SemanticErrorKind::TypeMismatch {
                                     expected: target_typ,
                                     found: expr_typ,
-                                });
-                                return SemanticType::Error;
+                                }.at(expr.span));
                             }
-                        },
+                        }
                     }
                 }
-                SemanticType::Unit
-            },
-            _ => SemanticType::Error,
-        }
 
-        // Assign(Vec<AssignTarget>, Vec<Expr>),
+                Ok(SemanticType::Unit)
+            }
+        }
     }
 
-    fn check_assign_target(&mut self, target: &AssignTarget) -> SemanticType {
-        // Discard,
-        // Var(String),
-        // Decl(String, Type),
-        // ArrayIndex(String, Vec<Expr>),
+    fn check_assign_target(
+        &mut self,
+        target: &AssignTarget,
+        fallback_span: Span,
+    ) -> TypeResult {
         match target {
-            AssignTarget::Discard => {
-                // compatible with anything
-                SemanticType::Error
+            AssignTarget::Discard => Ok(SemanticType::Unit),
+            AssignTarget::Var(var) => match self.context.search(var) {
+                Some(typ) => Ok(typ.clone()),
+                None => Err(SemanticErrorKind::UndeclaredIdentifier { name: var.clone() }
+                    .at(fallback_span)),
             },
-            AssignTarget::Var(var) => { 
-                let name = var.clone();
-                let var_typ = self.context.search(&name);
-                if !var_typ.is_some() {
-                    self.errors.push(SemanticError::UndeclaredIdentifier {
-                        name,
-                    });
-                    return SemanticType::Error
+            AssignTarget::Decl(var, typ) => match self.context.search(var) {
+                Some(_) => Err(SemanticErrorKind::DuplicateDeclaration { name: var.clone() }
+                    .at(fallback_span)),
+                None => {
+                    self.context
+                        .push(var, &SemanticType::Single(typ.clone()));
+                    Ok(SemanticType::Single(typ.clone()))
                 }
-                var_typ.unwrap().clone()
-            },
-            AssignTarget::Decl(var, typ) => {
-                let name = var.clone();
-                let var_typ = self.context.search(&name);
-                if var_typ.is_some() {
-                    self.errors.push(SemanticError::DuplicateDeclaration {
-                        name,
-                    });
-                    return SemanticType::Error
-                }
-                self.context.push(&name, &SemanticType::Single(typ.clone()));
-                SemanticType::Single(typ.clone())
             },
             AssignTarget::ArrayIndex(var, e_lst) => {
-                let name = var.clone();
-                let var_typ = self.context.search(&name).cloned();
+                let var_typ = self.context.search(var).cloned();
                 match var_typ {
-                    None => {
-                        self.errors.push(SemanticError::UndeclaredIdentifier {
-                            name: name.clone(),
-                        });
-                        SemanticType::Error
-                    }
+                    None => Err(SemanticErrorKind::UndeclaredIdentifier {
+                        name: var.clone(),
+                    }.at(fallback_span)),
                     Some(mut current) => {
                         for expr in e_lst {
-                            let idx_type = self.check_expr(expr);
+                            let idx_type = self.check_expr(expr)?;
                             if idx_type != SemanticType::Single(Type::Int) {
-                                self.errors.push(SemanticError::TypeMismatch {
+                                return Err(SemanticErrorKind::TypeMismatch {
                                     expected: SemanticType::Single(Type::Int),
                                     found: idx_type,
-                                });
-                                return SemanticType::Error;
+                                }.at(expr.span));
                             }
                             match current {
                                 SemanticType::Single(Type::Array(base, _)) => {
                                     current = SemanticType::Single(*base);
                                 }
                                 _ => {
-                                    self.errors.push(SemanticError::ExpectedArray {
+                                    return Err(SemanticErrorKind::ExpectedArray {
                                         found: current,
-                                    });
-                                    return SemanticType::Error;
+                                    }.at(expr.span));
                                 }
                             }
                         }
-                        current
+                        Ok(current)
                     }
                 }
-            },
+            }
         }
-
     }
-
 }

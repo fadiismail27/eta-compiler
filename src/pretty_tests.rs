@@ -1,68 +1,67 @@
 use super::*;
 
+fn e(kind: ExprKind) -> Expr { Spanned::dummy(kind) }
+fn s(kind: StmtKind) -> Stmt { Spanned::dummy(kind) }
+
 // ── expression tests ──────────────────────────────────────────────
 
 #[test]
 fn test_simple_expr() {
-    let e = Expr::BinOp(
+    let ex = e(ExprKind::BinOp(
         BinOp::Add,
-        Box::new(Expr::IntLit(1)),
-        Box::new(Expr::IntLit(2)),
-    );
-    assert_eq!(pretty_expr(&e), "1 + 2");
+        Box::new(e(ExprKind::IntLit(1))),
+        Box::new(e(ExprKind::IntLit(2))),
+    ));
+    assert_eq!(pretty_expr(&ex), "1 + 2");
 }
 
 #[test]
 fn test_precedence_parens() {
-    // 1 + 2 * 3  should NOT get parens
-    let e = Expr::BinOp(
+    let ex = e(ExprKind::BinOp(
         BinOp::Add,
-        Box::new(Expr::IntLit(1)),
-        Box::new(Expr::BinOp(
+        Box::new(e(ExprKind::IntLit(1))),
+        Box::new(e(ExprKind::BinOp(
             BinOp::Mul,
-            Box::new(Expr::IntLit(2)),
-            Box::new(Expr::IntLit(3)),
-        )),
-    );
-    assert_eq!(pretty_expr(&e), "1 + 2 * 3");
+            Box::new(e(ExprKind::IntLit(2))),
+            Box::new(e(ExprKind::IntLit(3))),
+        ))),
+    ));
+    assert_eq!(pretty_expr(&ex), "1 + 2 * 3");
 
-    // (1 + 2) * 3
-    let e2 = Expr::BinOp(
+    let e2 = e(ExprKind::BinOp(
         BinOp::Mul,
-        Box::new(Expr::BinOp(
+        Box::new(e(ExprKind::BinOp(
             BinOp::Add,
-            Box::new(Expr::IntLit(1)),
-            Box::new(Expr::IntLit(2)),
-        )),
-        Box::new(Expr::IntLit(3)),
-    );
+            Box::new(e(ExprKind::IntLit(1))),
+            Box::new(e(ExprKind::IntLit(2))),
+        ))),
+        Box::new(e(ExprKind::IntLit(3))),
+    ));
     assert_eq!(pretty_expr(&e2), "(1 + 2) * 3");
 }
 
 #[test]
 fn test_left_assoc() {
-    // (a - b) - c  should print as  a - b - c
-    let e = Expr::BinOp(
+    let ex = e(ExprKind::BinOp(
         BinOp::Sub,
-        Box::new(Expr::BinOp(
+        Box::new(e(ExprKind::BinOp(
             BinOp::Sub,
-            Box::new(Expr::Var("a".into())),
-            Box::new(Expr::Var("b".into())),
-        )),
-        Box::new(Expr::Var("c".into())),
-    );
-    assert_eq!(pretty_expr(&e), "a - b - c");
+            Box::new(e(ExprKind::Var("a".into()))),
+            Box::new(e(ExprKind::Var("b".into()))),
+        ))),
+        Box::new(e(ExprKind::Var("c".into()))),
+    ));
+    assert_eq!(pretty_expr(&ex), "a - b - c");
 
-    // a - (b - c)  must print with parens
-    let e2 = Expr::BinOp(
+    let e2 = e(ExprKind::BinOp(
         BinOp::Sub,
-        Box::new(Expr::Var("a".into())),
-        Box::new(Expr::BinOp(
+        Box::new(e(ExprKind::Var("a".into()))),
+        Box::new(e(ExprKind::BinOp(
             BinOp::Sub,
-            Box::new(Expr::Var("b".into())),
-            Box::new(Expr::Var("c".into())),
-        )),
-    );
+            Box::new(e(ExprKind::Var("b".into()))),
+            Box::new(e(ExprKind::Var("c".into()))),
+        ))),
+    ));
     assert_eq!(pretty_expr(&e2), "a - (b - c)");
 }
 
@@ -91,7 +90,7 @@ fn test_func_def() {
         returns: vec![Type::Bool],
         body: Block {
             stmts: vec![],
-            return_val: Some(vec![Expr::BoolLit(true)]),
+            return_val: Some(vec![e(ExprKind::BoolLit(true))]),
         },
     };
     let p = Program {
@@ -107,15 +106,15 @@ fn test_func_def() {
 
 #[test]
 fn test_if_no_parens_around_condition() {
-    let s = Stmt::If(
-        Expr::BoolLit(true),
-        Box::new(Stmt::Block(Block {
+    let st = s(StmtKind::If(
+        e(ExprKind::BoolLit(true)),
+        Box::new(s(StmtKind::Block(Block {
             stmts: vec![],
             return_val: None,
-        })),
+        }))),
         None,
-    );
-    let out = pretty_stmt(&s);
+    ));
+    let out = pretty_stmt(&st);
     assert!(
         out.contains("if true {"),
         "expected 'if true {{' without parens, got: {}",
@@ -130,32 +129,32 @@ fn test_if_no_parens_around_condition() {
 
 #[test]
 fn test_if_else_no_parens() {
-    let s = Stmt::If(
-        Expr::Var("x".into()),
-        Box::new(Stmt::Block(Block {
-            stmts: vec![],
-            return_val: None,
-        })),
-        Some(Box::new(Stmt::Block(Block {
+    let st = s(StmtKind::If(
+        e(ExprKind::Var("x".into())),
+        Box::new(s(StmtKind::Block(Block {
             stmts: vec![],
             return_val: None,
         }))),
-    );
-    let out = pretty_stmt(&s);
+        Some(Box::new(s(StmtKind::Block(Block {
+            stmts: vec![],
+            return_val: None,
+        })))),
+    ));
+    let out = pretty_stmt(&st);
     assert!(out.contains("if x {"), "got: {}", out);
     assert!(out.contains("} else {"), "got: {}", out);
 }
 
 #[test]
 fn test_while_no_parens_around_condition() {
-    let s = Stmt::While(
-        Expr::BoolLit(false),
-        Box::new(Stmt::Block(Block {
+    let st = s(StmtKind::While(
+        e(ExprKind::BoolLit(false)),
+        Box::new(s(StmtKind::Block(Block {
             stmts: vec![],
             return_val: None,
-        })),
-    );
-    let out = pretty_stmt(&s);
+        }))),
+    ));
+    let out = pretty_stmt(&st);
     assert!(
         out.contains("while false {"),
         "expected 'while false {{' without parens, got: {}",
@@ -172,11 +171,11 @@ fn test_while_no_parens_around_condition() {
 
 #[test]
 fn test_pretty_stmt_no_trailing_newline() {
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![AssignTarget::Var("x".into())],
-        vec![Expr::IntLit(42)],
-    );
-    let out = pretty_stmt(&s);
+        vec![e(ExprKind::IntLit(42))],
+    ));
+    let out = pretty_stmt(&st);
     assert!(
         !out.ends_with('\n'),
         "pretty_stmt should NOT end with newline, got: {:?}",
@@ -187,15 +186,15 @@ fn test_pretty_stmt_no_trailing_newline() {
 
 #[test]
 fn test_pretty_stmt_if_no_trailing_newline() {
-    let s = Stmt::If(
-        Expr::BoolLit(true),
-        Box::new(Stmt::Block(Block {
+    let st = s(StmtKind::If(
+        e(ExprKind::BoolLit(true)),
+        Box::new(s(StmtKind::Block(Block {
             stmts: vec![],
             return_val: None,
-        })),
+        }))),
         None,
-    );
-    let out = pretty_stmt(&s);
+    ));
+    let out = pretty_stmt(&st);
     assert!(
         !out.ends_with('\n'),
         "pretty_stmt should NOT end with newline, got: {:?}",
@@ -207,22 +206,20 @@ fn test_pretty_stmt_if_no_trailing_newline() {
 
 #[test]
 fn test_proc_call_single_value() {
-    let s = Stmt::Assign(
+    let st = s(StmtKind::Assign(
         vec![],
-        vec![Expr::FuncCall("print".into(), vec![Expr::IntLit(1)])],
-    );
-    let out = pretty_stmt(&s);
+        vec![e(ExprKind::FuncCall("print".into(), vec![e(ExprKind::IntLit(1))]))],
+    ));
+    let out = pretty_stmt(&st);
     assert_eq!(out, "print(1);");
 }
 
 #[test]
 #[should_panic(expected = "expected exactly 1 value in procedure-call statement")]
 fn test_proc_call_multiple_values_panics_in_debug() {
-    // The AST invariant is exactly one FuncCall when targets is empty.
-    // In debug builds the debug_assert! fires; this test documents that.
     let values = vec![
-        Expr::FuncCall("foo".into(), vec![]),
-        Expr::FuncCall("bar".into(), vec![]),
+        e(ExprKind::FuncCall("foo".into(), vec![])),
+        e(ExprKind::FuncCall("bar".into(), vec![])),
     ];
     let mut buf = String::new();
     write_assign(&mut buf, &[], &values, 0);

@@ -47,7 +47,47 @@ pub enum Token {
     StringLiteral(String),
 }
 
-// program
+// ── span / location types ─────────────────────────────────────────
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Span {
+    pub fn dummy() -> Self {
+        Span { start: 0, end: 0 }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Spanned<T> {
+    pub node: T,
+    pub span: Span,
+}
+
+impl<T: PartialEq> PartialEq for Spanned<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node
+    }
+}
+
+impl<T> Spanned<T> {
+    pub fn dummy(node: T) -> Self {
+        Spanned { node, span: Span::dummy() }
+    }
+}
+
+pub fn spanned<T>(node: T, start: usize, end: usize) -> Spanned<T> {
+    Spanned { node, span: Span { start, end } }
+}
+
+pub type Expr = Spanned<ExprKind>;
+pub type Stmt = Spanned<StmtKind>;
+
+// ── program ───────────────────────────────────────────────────────
+
 #[derive(Clone, Debug)]
 pub struct Program {
     pub uses: Vec<String>,
@@ -112,7 +152,7 @@ pub struct Block {
 
 // statements
 #[derive(Clone, Debug)]
-pub enum Stmt {
+pub enum StmtKind {
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     Block(Block),
@@ -145,7 +185,7 @@ pub enum IdentStmtRest {
 
 // expressions
 #[derive(PartialEq, Clone, Debug)]
-pub enum Expr {
+pub enum ExprKind {
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     UnaryOp(UnaryOp, Box<Expr>),
     Var(String),
@@ -208,14 +248,21 @@ pub enum DeclSuffix {
 }
 
 impl IdentStmtRest {
-    // converts an ident-started statement fragment into a full Stmt
-    // name is the leading IDENT that was already consumed by the grammar
-    pub fn into_stmt(self, name: String) -> Stmt {
+    /// Converts an ident-started statement fragment into a StmtKind.
+    /// `name` is the leading IDENT already consumed by the grammar.
+    /// `span` is the overall span of the statement (used for internally
+    /// constructed expression nodes that lack their own position).
+    pub fn into_stmt(self, name: String, span: Span) -> StmtKind {
         match self {
-            IdentStmtRest::ProcCall(args) => Stmt::Assign(vec![], vec![Expr::FuncCall(name, args)]),
-            IdentStmtRest::Assign(e) => Stmt::Assign(vec![AssignTarget::Var(name)], vec![e]),
+            IdentStmtRest::ProcCall(args) => {
+                let call = Spanned { node: ExprKind::FuncCall(name, args), span };
+                StmtKind::Assign(vec![], vec![call])
+            }
+            IdentStmtRest::Assign(e) => {
+                StmtKind::Assign(vec![AssignTarget::Var(name)], vec![e])
+            }
             IdentStmtRest::ArrayAssign(indices, e) => {
-                Stmt::Assign(vec![AssignTarget::ArrayIndex(name, indices)], vec![e])
+                StmtKind::Assign(vec![AssignTarget::ArrayIndex(name, indices)], vec![e])
             }
             IdentStmtRest::UnifiedDecl(base_ty, dims, suffix) => {
                 // Dimensions are parsed left-to-right: int[3][4] → dims=[Some(3), Some(4)].
@@ -226,34 +273,37 @@ impl IdentStmtRest {
                     ty = Type::Array(Box::new(ty), dim.clone().map(Box::new));
                 }
                 match suffix {
-                    DeclSuffix::None => Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![]),
+                    DeclSuffix::None => StmtKind::Assign(vec![AssignTarget::Decl(name, ty)], vec![]),
                     DeclSuffix::Init(e) => {
-                        Stmt::Assign(vec![AssignTarget::Decl(name, ty)], vec![e])
+                        StmtKind::Assign(vec![AssignTarget::Decl(name, ty)], vec![e])
                     }
                     DeclSuffix::Multi(rest, vals) => {
                         let mut targets = vec![AssignTarget::Decl(name, ty)];
                         targets.extend(rest);
-                        Stmt::Assign(targets, vals)
+                        StmtKind::Assign(targets, vals)
                     }
                 }
             }
             IdentStmtRest::MultiAssign(rest, vals) => {
                 let mut targets = vec![AssignTarget::Var(name)];
                 targets.extend(rest);
-                Stmt::Assign(targets, vals)
+                StmtKind::Assign(targets, vals)
             }
             IdentStmtRest::MultiArrayAssign(indices, rest, vals) => {
                 let mut targets = vec![AssignTarget::ArrayIndex(name, indices)];
                 targets.extend(rest);
-                Stmt::Assign(targets, vals)
+                StmtKind::Assign(targets, vals)
             }
             IdentStmtRest::CallIndexAssign(args, indices, e) => {
-                let call = Expr::FuncCall(name, args);
+                let call = Spanned { node: ExprKind::FuncCall(name, args), span };
                 let mut target = call;
                 for idx in indices {
-                    target = Expr::Index(Box::new(target), Box::new(idx));
+                    target = Spanned {
+                        node: ExprKind::Index(Box::new(target), Box::new(idx)),
+                        span,
+                    };
                 }
-                Stmt::Assign(vec![AssignTarget::Discard], vec![e])
+                StmtKind::Assign(vec![AssignTarget::Discard], vec![e])
             }
         }
     }
