@@ -1,6 +1,6 @@
 use crate::checker::context::Context;
 use crate::parser::ast::{
-    AssignTarget, BinOp, Expr, ExprKind, Block, FuncDef, Program, Span, Spanned,
+    AssignTarget, BinOp, Block, Expr, ExprKind, FuncDef, Interface, Program, Span, Spanned,
     StmtKind, TopLevelItem, Type, UnaryOp,
 };
 
@@ -96,6 +96,22 @@ impl TypeChecker {
         TypeChecker {
             context: Context::new(),
             current_return_type: None,
+        }
+    }
+
+    pub fn register_interface(&mut self, iface: &Interface) {
+        for decl in &iface.decls {
+            if self.context.search(&decl.name).is_some() {
+                continue;
+            }
+            let ret = SemanticType::Tuple(decl.returns.clone());
+            self.context.push(
+                &decl.name,
+                &SemanticType::Func {
+                    args: decl.params.iter().map(|p| p.ty.clone()).collect(),
+                    ret: Box::new(ret),
+                },
+            );
         }
     }
 

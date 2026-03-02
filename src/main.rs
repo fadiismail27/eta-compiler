@@ -15,8 +15,18 @@ use logos::Logos;
 use parser::adapter::{self, AdapterResult};
 use std::process;
 
+fn normalize_args() -> Vec<String> {
+    std::env::args()
+        .map(|arg| match arg.as_str() {
+            "-sourcepath" => "--sourcepath".to_string(),
+            "-libpath" => "--libpath".to_string(),
+            _ => arg,
+        })
+        .collect()
+}
+
 fn main() {
-    let args = Args::parse();
+    let args = Args::parse_from(normalize_args());
 
     if args.source_files.is_empty() && !args.lex && !args.parse && !args.typecheck {
         let _ = Args::try_parse_from(["etac", "--help"]);
@@ -202,10 +212,11 @@ fn process_typecheck_file(
             parser::eta::ProgramParser::new().parse(tokens.into_iter().map(Ok::<_, String>));
         match parse_result {
             Ok(ast) => {
-                // Load interface files for each `use` declaration
-                let _interfaces = load_interfaces(&ast.uses, source_dir, lib_dir)?;
-                // TODO: register interface signatures in the type checker context
+                let interfaces = load_interfaces(&ast.uses, source_dir, lib_dir)?;
                 let mut tc = checker::check::TypeChecker::new();
+                for (_name, iface) in &interfaces {
+                    tc.register_interface(iface);
+                }
                 match tc.check_program(&ast) {
                     Ok(()) => "Valid Eta Program".to_string(),
                     Err(e) => {

@@ -5,16 +5,20 @@ use clap::Parser;
 #[command(about = "Eta compiler - CS4120/5120/5121 Spring 2026")]
 pub struct Args {
     /// Generate lexer output
-    #[arg(long = "lex")]
+    #[arg(short = 'l', long = "lex")]
     pub lex: bool,
 
     /// Generate parser output
-    #[arg(long = "parse")]
+    #[arg(short = 'p', long = "parse")]
     pub parse: bool,
 
     /// Generate type checker output
-    #[arg(long = "typecheck")]
+    #[arg(short = 't', long = "typecheck")]
     pub typecheck: bool,
+
+    /// Generate interface output (placeholder for future PA)
+    #[arg(short = 'i')]
+    pub interface: bool,
 
     /// Specify output directory for generated files
     #[arg(short = 'D', value_name = "PATH")]
