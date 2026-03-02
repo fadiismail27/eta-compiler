@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>PA3 Overview Document</title>
+  <style>
+    code {
+      white-space: pre-wrap;
+    }
+
+    span.smallcaps {
+      font-variant: small-caps;
+    }
+
+    div.columns {
+      display: flex;
+      gap: min(4vw, 1.5em);
+    }
+
+    div.column {
+      flex: auto;
+      overflow-x: auto;
+    }
+
+    div.hanging-indent {
+      margin-left: 1.5em;
+      text-indent: -1.5em;
+    }
+
+    ul.task-list[class] {
+      list-style: none;
+    }
+
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+
+    .display.math {
+      display: block;
+      text-align: center;
+      margin: 0.5rem auto;
+    }
+  </style>
+  <link rel="stylesheet" href />
+</head>
+
+<body>
+  <h1 id="pa3-overview-document">PA3 Overview Document</h1>
+  <h2 id="cs-4120-overview-documentation">CS 4120: Overview
+    Documentation</h2>
+  <h3 id="programming-assignment-3-semantic-analysis-type-checking">Programming
+    Assignment 3: Semantic Analysis (Type Checking)</h3>
+  <p><strong>Authors:</strong> Fadi Ismail (fmi4), Yoseph Endawoke (ye38),
+    Charles Liggins (cll258), Temi Adebowale (ta375)</p>
+  <p><strong>Date:</strong> February 28, 2026</p>
+  <hr />
+  <h2 id="metadata">1. Metadata</h2>
+  <ul>
+    <li><strong>Assignment:</strong> Programming Assignment 3 — Type
+      Checker</li>
+    <li><strong>Group members:</strong>
+      <ul>
+        <li>Fadi Ismail (fmi4)</li>
+        <li>Yoseph Endawoke (ye38)</li>
+        <li>Charles Liggins (cll258)</li>
+        <li>Temi Adebowale (ta375)</li>
+      </ul>
+    </li>
+    <li><strong>How to run:</strong></li>
+  </ul>
+  <pre><code># Build the compiler
+./etac-build
+
+# Type check a single .eta file
+./etac --typecheck &lt;filename&gt;.eta
+
+# Type check with library path and output directory
+./etac --typecheck -libpath &lt;libdir&gt; -D &lt;outdir&gt; --sourcepath &lt;srcdir&gt; &lt;files...&gt;
+
+# Lex and parse still work (PA1/PA2 functionality preserved)
+./etac --lex &lt;filename&gt;.eta
+./etac --parse &lt;filename&gt;.eta
+
+# Run unit tests
+cargo test</code></pre>
+  <ul>
+    <li><strong>Main entry point:</strong> <code>src/main.rs</code></li>
+    <li><strong>Environment tested:</strong> macOS (Darwin 25.2.0), Linux VM
+      (Ubuntu 24.04, course Docker image), Rust 1.93.0</li>
+  </ul>
+  <hr />
+  <h2 id="summary">2. Summary</h2>
+  <p>The most challenging aspects of this assignment were designing a
+    clean error handling strategy using Rust’s <code>Result</code> type and
+    propagating source location information through the AST for accurate
+    error reporting.</p>
+  <p>Key design decisions included:</p>
+  <ul>
+    <li>
+      <p><strong>Fail-fast error handling with <code>Result</code>
+          types:</strong> Rather than accumulating errors in a list, the type
+        checker returns <code>Result&lt;SemanticType, SemanticError&gt;</code>
+        from every checking function and uses the <code>?</code> operator for
+        immediate propagation. This simplified control flow and made error
+        handling uniform across all checking logic.</p>
+    </li>
+    <li>
+      <p><strong><code>Spanned&lt;T&gt;</code> wrapper for AST span
+          propagation:</strong> Instead of adding span fields to every AST node,
+        we introduced a generic <code>Spanned&lt;T&gt;</code> struct that pairs
+        any node with a <code>Span { start, end }</code> byte-offset range. The
+        type aliases <code>Expr = Spanned&lt;ExprKind&gt;</code> and
+        <code>Stmt = Spanned&lt;StmtKind&gt;</code> make this transparent to
+        consumers while providing location data for every expression and
+        statement.
+      </p>
+    </li>
+    <li>
+      <p><strong>Scoped symbol table with mutation log:</strong> The type
+        context uses a <code>HashMap</code>-based symbol table with a mutation
+        log and scope markers for efficient
+        <code>enter_scope</code>/<code>exit_scope</code> operations, supporting
+        correct variable shadowing across nested scopes.
+      </p>
+    </li>
+    <li>
+      <p><strong>Two-pass type checking:</strong> The checker first
+        collects all top-level function and global signatures into the context,
+        then checks each function body. This allows forward references
+        (functions calling other functions declared later in the file).</p>
+    </li>
+    <li>
+      <p><strong>Interface registration:</strong> Parsed <code>.eti</code>
+        interface files are loaded and their function signatures are registered
+        in the type context before program checking begins, enabling use of
+        library functions like those in <code>io.eti</code>.</p>
+    </li>
+  </ul>
+  <p>A known limitation is that the type checker currently uses
+    <code>context.clone()</code> to save and restore scope state around
+    blocks, if/else, and while statements. This works correctly but is less
+    efficient than the <code>enter_scope</code>/<code>exit_scope</code>
+    mechanism provided by the scoped symbol table.
+  </p>
+  <hr />
+  <h2 id="specification">3. Specification</h2>
+  <p>We encountered several areas requiring interpretation:</p>
+  <ul>
+    <li>
+      <p><strong>Error reporting format:</strong> The specification
+        requires <code>&lt;line&gt;:&lt;col&gt; error:&lt;description&gt;</code>
+        output. We capture byte offsets via LALRPOP’s
+        <code>@L</code>/<code>@R</code> markers in the grammar and convert them
+        to 1-indexed line and column numbers using a
+        <code>byte_offset_to_line_col</code> utility. For valid programs, the
+        output is <code>Valid Eta Program</code>.
+      </p>
+    </li>
+    <li>
+      <p><strong>Fail-fast vs. multi-error:</strong> The specification
+        does not prescribe whether the compiler should report all errors or stop
+        at the first. We chose fail-fast (report the first error encountered and
+        stop), which is simpler and consistent with most production compilers’
+        behavior for semantic errors.</p>
+    </li>
+    <li>
+      <p><strong><code>void</code> vs. <code>unit</code> statement
+          types:</strong> We distinguish between <code>Void</code> (a statement
+        that always returns, e.g., a block ending in <code>return</code>) and
+        <code>Unit</code> (a statement that may or may not return). An
+        <code>if/else</code> where both branches are <code>Void</code> produces
+        <code>Void</code>; otherwise it produces <code>Unit</code>. A function
+        with a non-empty return type must have a <code>Void</code>
+        body.
+      </p>
+    </li>
+    <li>
+      <p><strong>Empty array literal typing:</strong> The expression
+        <code>{}</code> has type <code>EmptyArray</code>, which is compatible
+        with any array type. This allows <code>x: int[] = {}</code> without
+        knowing the element type at the literal site.
+      </p>
+    </li>
+    <li>
+      <p><strong>Procedure call representation:</strong> A procedure call
+        <code>f(x)</code> is represented as
+        <code>Assign([], [FuncCall(&quot;f&quot;, [x])])</code> — an assignment with no
+        targets and one expression. The type checker special-cases this pattern
+        to verify argument types without requiring a return value.
+      </p>
+    </li>
+    <li>
+      <p><strong>Multi-return assignment:</strong> <code>x, y = f()</code>
+        is checked by verifying that the function’s return tuple length matches
+        the number of assignment targets, and that each target’s type matches
+        the corresponding return type. Discard targets (<code>_</code>) accept
+        any type.</p>
+    </li>
+    <li>
+      <p><strong>Single-dash CLI flags:</strong> The <code>eth</code> test
+        harness passes <code>-libpath</code> and <code>-sourcepath</code>
+        (single-dash, Java-style), but our CLI uses <code>clap</code> which
+        expects <code>--libpath</code>/<code>--sourcepath</code> (double-dash).
+        We normalize these in a <code>normalize_args()</code> preprocessing step
+        before parsing.</p>
+    </li>
+  </ul>
+  <hr />
+  <h2 id="design-and-implementation">4. Design and Implementation</h2>
+  <h3 id="architecture">4.1 Architecture</h3>
+  <p><strong>Module layout (new and modified modules for
+      PA3):</strong></p>
+  <table>
+    <colgroup>
+      <col style="width: 26%" />
+      <col style="width: 20%" />
+      <col style="width: 53%" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Module</th>
+        <th>File</th>
+        <th>Responsibility</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Type Checker</td>
+        <td><code>src/checker/check.rs</code></td>
+        <td>Core type checking logic: expressions, statements, functions,
+          programs</td>
+      </tr>
+      <tr>
+        <td>Context</td>
+        <td><code>src/checker/context.rs</code></td>
+        <td>Scoped symbol table (<code>ScopedSymbolTable&lt;V&gt;</code>) and
+          <code>Context</code> wrapper
+        </td>
+      </tr>
+      <tr>
+        <td>Context Tests</td>
+        <td><code>src/checker/context_tests.rs</code></td>
+        <td>Unit tests for the scoped symbol table</td>
+      </tr>
+      <tr>
+        <td>AST (modified)</td>
+        <td><code>src/parser/ast.rs</code></td>
+        <td>Added <code>Span</code>, <code>Spanned&lt;T&gt;</code>, renamed
+          <code>Stmt</code>→<code>StmtKind</code>, type aliases
+        </td>
+      </tr>
+      <tr>
+        <td>Grammar (modified)</td>
+        <td><code>src/parser/eta.lalrpop</code></td>
+        <td>Added <code>@L</code>/<code>@R</code> byte offset captures to all
+          <code>Expr</code>/<code>Stmt</code> rules
+        </td>
+      </tr>
+      <tr>
+        <td>CLI (modified)</td>
+        <td><code>src/cli/cli.rs</code></td>
+        <td>Added <code>--typecheck</code> and <code>--libpath</code> flags</td>
+      </tr>
+      <tr>
+        <td>Main (modified)</td>
+        <td><code>src/main.rs</code></td>
+        <td>Typecheck pipeline, interface loading, arg normalization</td>
+      </tr>
+      <tr>
+        <td>S-expression (modified)</td>
+        <td><code>src/sexp.rs</code></td>
+        <td>Updated pattern matching for <code>Spanned</code> types</td>
+      </tr>
+      <tr>
+        <td>Pretty printer (modified)</td>
+        <td><code>src/pretty.rs</code></td>
+        <td>Updated pattern matching for <code>Spanned</code> types</td>
+      </tr>
+    </tbody>
+  </table>
+  <p><strong>Key interfaces:</strong></p>
+  <pre><code>// Type checker entry points
+TypeChecker::new() -&gt; TypeChecker
+TypeChecker::register_interface(&amp;mut self, iface: &amp;Interface)
+TypeChecker::check_program(&amp;mut self, program: &amp;Program) -&gt; Result&lt;(), SemanticError&gt;
+
+// Internal checking functions
+TypeChecker::check_func_def(&amp;mut self, func: &amp;FuncDef) -&gt; Result&lt;(), SemanticError&gt;
+TypeChecker::check_expr(&amp;mut self, exp: &amp;Expr) -&gt; Result&lt;SemanticType, SemanticError&gt;
+TypeChecker::check_stmt(&amp;mut self, stmt: &amp;Stmt) -&gt; Result&lt;SemanticType, SemanticError&gt;
+TypeChecker::check_assign_target(&amp;mut self, target: &amp;AssignTarget, span: Span) -&gt; TypeResult
+
+// Context operations
+Context::new() -&gt; Context
+Context::search(&amp;self, name: &amp;String) -&gt; Option&lt;&amp;SemanticType&gt;
+Context::push(&amp;mut self, name: &amp;String, typ: &amp;SemanticType) -&gt; bool
+Context::enter_scope(&amp;mut self) / Context::exit_scope(&amp;mut self)</code></pre>
+  <p><strong>Data flow (typecheck pipeline):</strong></p>
+  <pre><code>Source File (.eta)
+│
+▼
+read_source_file() ──────────► String (source code)
+│
+▼
+lex_for_parser() ────────────► Vec&lt;(usize, Token, usize)&gt;
+│
+▼
+ProgramParser::parse() ──────► Program AST (with Spanned nodes)
+│
+▼
+load_interfaces() ───────────► Vec&lt;(String, Interface)&gt;  [from .eti files]
+│
+▼
+TypeChecker::register_interface()  [for each interface]
+│
+▼
+TypeChecker::check_program() ► Ok(()) or Err(SemanticError { span, kind })
+│
+▼
+byte_offset_to_line_col() ──► &quot;Valid Eta Program&quot; or &quot;&lt;line&gt;:&lt;col&gt; error:&lt;msg&gt;&quot;
+│
+▼
+write_output_file() ─────────► .typed file</code></pre>
+  <h3 id="core-data-structures">4.2 Core Data Structures</h3>
+  <p><strong><code>SemanticType</code></strong> — the type system’s
+    internal representation:</p>
+  <ul>
+    <li><code>Single(Type)</code> — a single value: <code>int</code>,
+      <code>bool</code>, or an array type
+    </li>
+    <li><code>Tuple(Vec&lt;Type&gt;)</code> — multiple return values from a
+      function</li>
+    <li><code>Func { args, ret }</code> — a function signature stored in the
+      context</li>
+    <li><code>EmptyArray</code> — the type of <code>{}</code>, compatible
+      with any array type</li>
+    <li><code>Unit</code> — the type of a statement that does not guarantee
+      a return</li>
+    <li><code>Void</code> — the type of a statement that always returns</li>
+  </ul>
+  <p><strong><code>SemanticError</code></strong> — structured error with
+    source location:</p>
+  <pre><code>struct SemanticError { span: Span, kind: SemanticErrorKind }</code></pre>
+  <p><code>SemanticErrorKind</code> is an enum with 13 variants covering
+    scope errors (undeclared identifier, duplicate declaration), type errors
+    (type mismatch, expected array, invalid operator), function errors (not
+    callable, argument count/type mismatch, invalid return type), and
+    control flow errors (break outside loop, missing return).</p>
+  <p>The <code>SemanticErrorKind::at(span)</code> helper provides
+    ergonomic construction:
+    <code>SemanticErrorKind::TypeMismatch { expected, found }.at(expr.span)</code>.
+  </p>
+  <p><strong><code>Spanned&lt;T&gt;</code></strong> — generic AST location
+    wrapper:</p>
+  <pre><code>struct Spanned&lt;T&gt; { node: T, span: Span }
+type Expr = Spanned&lt;ExprKind&gt;;
+type Stmt = Spanned&lt;StmtKind&gt;;</code></pre>
+  <p><code>PartialEq</code> for <code>Spanned&lt;T&gt;</code> compares
+    only the <code>node</code> field, ignoring spans. This ensures
+    structural equality checks in the type checker are not affected by
+    source positions.</p>
+  <p><strong><code>ScopedSymbolTable&lt;V&gt;</code></strong> — scoped
+    symbol table:</p>
+  <p>Uses a <code>HashMap&lt;String, Vec&lt;V&gt;&gt;</code> where each
+    key maps to a stack of values (supporting shadowing). A
+    <code>log: Vec&lt;LogEntry&gt;</code> records mutations, with
+    <code>LogEntry::Marker</code> entries delimiting scopes.
+    <code>enter_scope()</code> pushes a marker; <code>exit_scope()</code>
+    pops entries back to the last marker, undoing all bindings from that
+    scope. This gives O(1) amortized scope entry/exit.
+  </p>
+  <h3 id="algorithms">4.3 Algorithms</h3>
+  <p><strong>Two-pass program checking:</strong></p>
+  <ol type="1">
+    <li>
+      <p><strong>Pass 1 (signature collection):</strong> Iterate all
+        <code>TopLevelItem</code>s. For each <code>FuncDef</code>, construct a
+        <code>SemanticType::Func</code> from its parameter types and return
+        types, and push it into the context. For each <code>GlobalDecl</code>,
+        push its type. Duplicate names are rejected.
+      </p>
+    </li>
+    <li>
+      <p><strong>Pass 2 (body checking):</strong> For each function, save
+        the context, push parameter bindings, set the expected return type,
+        check the body block, then restore the context. For globals with
+        initializers, check the init expression against the declared
+        type.</p>
+    </li>
+  </ol>
+  <p><strong>Expression type checking:</strong> Recursive descent over
+    <code>ExprKind</code> variants. Binary operators dispatch on the
+    operator to determine valid operand types and result types. Array
+    concatenation (<code>+</code> on arrays) requires matching element
+    types. Equality operators accept any pair of matching types. Function
+    calls verify argument count and types against the context.
+  </p>
+  <p><strong>Statement type checking:</strong> Returns <code>Unit</code>
+    or <code>Void</code> to track whether a statement guarantees a return.
+    Blocks propagate the type of their last statement (or <code>Void</code>
+    if they end in <code>return</code>). <code>if/else</code> is
+    <code>Void</code> only if both branches are <code>Void</code>.
+    <code>while</code> is always <code>Unit</code>.
+  </p>
+  <p><strong>Assignment checking (4 cases):</strong></p>
+  <ol type="1">
+    <li>Procedure call: <code>Assign([], [FuncCall(...)])</code> — verify
+      arguments</li>
+    <li>Declaration: <code>Assign([Decl(name, ty)], [])</code> — bind name
+      in context</li>
+    <li>Multi-assign from function:
+      <code>Assign([targets...], [FuncCall(...)])</code> — match return tuple
+      to targets
+    </li>
+    <li>General n-to-n: <code>Assign([targets...], [exprs...])</code> —
+      pairwise type check</li>
+  </ol>
+  <h3 id="rust-specific-design-choices">4.4 Rust-Specific Design
+    Choices</h3>
+  <p>A significant part of this assignment was choosing how to leverage
+    Rust’s type system and idioms to make the type checker correct, concise,
+    and hard to misuse.</p>
+  <p><strong><code>Result&lt;T, E&gt;</code> and the <code>?</code>
+      operator for error propagation.</strong> Every checking function returns
+    <code>Result&lt;SemanticType, SemanticError&gt;</code> (aliased as
+    <code>TypeResult</code>). This eliminated a class of bugs we had in an
+    earlier prototype that accumulated errors into a
+    <code>Vec&lt;SemanticError&gt;</code> on the <code>TypeChecker</code>
+    struct — it was easy to forget to check the error list, or to continue
+    checking after an error had already invalidated assumptions. With
+    <code>Result</code>, the <code>?</code> operator makes propagation
+    automatic: <code>let typ = self.check_expr(expr)?;</code> either unwraps
+    the successful type or immediately returns the error to the caller. This
+    removed roughly 30 lines of manual error-list management and made every
+    function’s control flow visibly correct — if a line uses <code>?</code>,
+    you know a failure stops execution there.
+  </p>
+  <p><strong>Exhaustive <code>match</code> for soundness.</strong> Rust’s
+    compiler enforces that every <code>match</code> on an enum is
+    exhaustive. This was critical for the type checker: when we added new
+    <code>ExprKind</code> or <code>StmtKind</code> variants, the compiler
+    immediately flagged every <code>match</code> site that needed updating.
+    For example, <code>check_expr</code> matches on all 10
+    <code>ExprKind</code> variants and <code>check_stmt</code> on all 4
+    <code>StmtKind</code> variants — if a variant were added to the AST
+    without a corresponding type rule, the code would not compile.
+    Similarly, the <code>BinOp</code> match in <code>check_expr</code>
+    covers all 14 operators, and adding a new operator forces a handling
+    decision. This is a significant advantage over languages where a missing
+    case would silently fall through or require runtime checks.
+  </p>
+  <p><strong>Nested pattern matching to avoid code duplication.</strong>
+    Rust’s pattern matching allowed us to express complex type dispatch
+    concisely. For instance, the <code>Add</code> operator must handle five
+    distinct cases (int+int, array+array, array+empty, empty+array,
+    empty+empty), each expressed as a single match arm:</p>
+  <pre><code>match (&amp;typ1, &amp;typ2) {
+    (Single(Type::Int), Single(Type::Int)) =&gt; Ok(Single(Type::Int)),
+    (Single(Type::Array(b1, _)), Single(Type::Array(b2, _))) =&gt; { ... }
+    (Single(Type::Array(_, _)), EmptyArray) =&gt; Ok(typ1.clone()),
+    (EmptyArray, Single(Type::Array(_, _))) =&gt; Ok(typ2.clone()),
+    (EmptyArray, EmptyArray) =&gt; Ok(EmptyArray),
+    _ =&gt; Err(InvalidBinaryOp { ... }.at(span)),
+}</code></pre>
+  <p>The <code>_</code> wildcard catch-all guarantees all other
+    combinations produce an error. Without pattern matching, this would
+    require nested <code>if</code>/<code>else</code> chains or separate
+    functions for each case.</p>
+  <p><strong>Generic <code>Spanned&lt;T&gt;</code> with type
+      aliases.</strong> We considered two alternatives for carrying source
+    locations: (a) adding <code>span: Span</code> fields to
+    <code>ExprKind</code> and <code>StmtKind</code> directly, or (b)
+    wrapping in a generic struct. Option (a) would have cluttered every
+    pattern match — every arm would need to bind or ignore the span field.
+    With option (b), pattern matching on the inner node is a single
+    <code>.node</code> access:
+    <code>match &amp;expr.node { ExprKind::Var(v) =&gt; ... }</code>. The
+    type aliases <code>type Expr = Spanned&lt;ExprKind&gt;</code> let
+    function signatures stay clean while carrying location data. The custom
+    <code>PartialEq</code> implementation (comparing only
+    <code>.node</code>, ignoring <code>.span</code>) meant existing equality
+    checks in the type checker worked without modification.
+  </p>
+  <p><strong><code>SemanticErrorKind::at(span)</code> builder
+      pattern.</strong> Constructing a <code>SemanticError</code> requires
+    both a <code>kind</code> and a <code>span</code>. Rather than writing
+    <code>SemanticError { span: expr.span, kind: SemanticErrorKind::TypeMismatch { ... } }</code>
+    everywhere, the <code>at()</code> method on
+    <code>SemanticErrorKind</code> lets us write the kind first and attach
+    the span last:
+    <code>SemanticErrorKind::TypeMismatch { expected, found }.at(expr.span)</code>.
+    This reads naturally (describe the error, then say where it is) and
+    avoids repetitive struct construction.
+  </p>
+  <p><strong>Generics in <code>ScopedSymbolTable&lt;V&gt;</code>.</strong>
+    The symbol table is generic over its value type <code>V</code>, not
+    hardcoded to <code>SemanticType</code>. This made unit testing
+    straightforward — tests use <code>ScopedSymbolTable&lt;i32&gt;</code> to
+    verify scope mechanics with simple integers, without needing to
+    construct <code>SemanticType</code> values. The <code>Context</code>
+    wrapper specializes it to
+    <code>ScopedSymbolTable&lt;SemanticType&gt;</code> for the actual type
+    checker.
+  </p>
+  <h3 id="implementation-strategy-and-collaboration">4.5 Implementation
+    Strategy and Collaboration</h3>
+  <p>We used a bottom-up approach, building foundational components
+    first:</p>
+  <ol type="1">
+    <li>Designed and implemented the scoped symbol table and context</li>
+    <li>Built the core type checker logic (expressions, statements,
+      functions)</li>
+    <li>Added span propagation to the AST and grammar</li>
+    <li>Integrated error handling with <code>Result</code> types and
+      structured <code>SemanticError</code></li>
+    <li>Wired up the CLI <code>--typecheck</code> flag, interface loading,
+      and output pipeline</li>
+    <li>End-to-end testing with the course test harness</li>
+  </ol>
+  <p><strong>Challenges:</strong></p>
+  <ul>
+    <li>
+      <p><strong>AST span propagation:</strong> Adding
+        <code>Spanned&lt;T&gt;</code> wrappers required coordinated changes
+        across <code>ast.rs</code>, <code>eta.lalrpop</code>,
+        <code>sexp.rs</code>, <code>pretty.rs</code>, <code>check.rs</code>, and
+        all test files. The <code>ExprKind</code>/<code>StmtKind</code> rename
+        and type alias approach minimized churn in pattern matching
+        code.
+      </p>
+    </li>
+    <li>
+      <p><strong>Result type refactoring:</strong> Converting the type
+        checker from error accumulation to fail-fast <code>Result</code>
+        propagation required rewriting every checking function to use
+        <code>Ok(...)</code>, <code>Err(...)</code>, and <code>?</code>
+        consistently.
+      </p>
+    </li>
+    <li>
+      <p><strong>Single-dash CLI flag compatibility:</strong> The course
+        test harness passes <code>-libpath</code> (single dash) which
+        <code>clap</code> interprets as chained short flags
+        <code>-l -i -b ...</code>. We solved this with a preprocessing step that
+        normalizes single-dash long arguments before clap parsing.
+      </p>
+    </li>
+  </ul>
+  <p><strong>Code reuse:</strong> PA1 lexer code was unchanged. PA2 parser
+    and S-expression code required only mechanical updates for
+    <code>Spanned</code> types. The CLI module was extended with new
+    flags.
+  </p>
+  <p><strong>Who wrote what:</strong></p>
+  <table>
+    <colgroup>
+      <col style="width: 43%" />
+      <col style="width: 56%" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Team Member</th>
+        <th>Responsibilities</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Charles</td>
+        <td>AST span propagation (<code>Span</code>,
+          <code>Spanned&lt;T&gt;</code>), error handling refactoring
+          (<code>Result</code> types,
+          <code>SemanticError</code>/<code>SemanticErrorKind</code> design),
+          <code>byte_offset_to_line_col</code> integration
+        </td>
+      </tr>
+      <tr>
+        <td>Temi</td>
+        <td>CLI functionality (<code>--typecheck</code> flag,
+          <code>--libpath</code>, <code>-D</code> integration), typecheck output
+          pipeline, arg normalization
+        </td>
+      </tr>
+      <tr>
+        <td>Yoseph</td>
+        <td>Core type checker logic (<code>check_expr</code>,
+          <code>check_stmt</code>, <code>check_func_def</code>,
+          <code>check_program</code>), assignment checking (4 cases), context
+          stub
+        </td>
+      </tr>
+      <tr>
+        <td>Fadi</td>
+        <td>Scoped symbol table design and implementation
+          (<code>ScopedSymbolTable</code>, <code>Context</code>), context unit
+          tests</td>
+      </tr>
+    </tbody>
+  </table>
+  <hr />
+  <h2 id="testing">5. Testing</h2>
+  <h3 id="test-plan">5.1 Test Plan</h3>
+  <p>We designed tests at two levels: unit tests for individual components
+    and integration tests via the course test harness.</p>
+  <p><strong>Unit tests (run via <code>cargo test</code>):</strong></p>
+  <ul>
+    <li>
+      <p><strong>Context tests (8 tests):</strong> Basic shadowing,
+        multiple puts in same scope, independent keys, deep nesting (3 levels),
+        exit scope with no bindings, scope debug helpers (depth/len), panic on
+        exit without marker. These verify the correctness of the scoped symbol
+        table’s enter/exit/put/get operations.</p>
+    </li>
+    <li>
+      <p><strong>S-expression tests (24 tests):</strong> Carried forward
+        from PA2, updated for <code>Spanned</code> types. Verify
+        AST-to-S-expression conversion for all node types.</p>
+    </li>
+    <li>
+      <p><strong>Pretty printer tests (12 tests):</strong> Carried forward
+        from PA2, updated for <code>Spanned</code> types.</p>
+    </li>
+  </ul>
+  <p><strong>Integration tests (run via <code>eth</code> test
+      harness):</strong></p>
+  <p>The course-provided PA3 test suite includes 29 typecheck tests
+    covering: valid programs with functions, globals, arrays,
+    multi-dimensional arrays, multi-return functions, multi-assignment,
+    forward references, library usage (<code>use io</code>), and programs
+    with intentional type errors.</p>
+  <h3 id="results">5.2 Results</h3>
+  <ul>
+    <li><strong>Unit tests:</strong> All 44 tests pass
+      (<code>cargo test</code>): 8 context, 24 S-expression, 12 pretty
+      printer.</li>
+    <li><strong>Integration tests:</strong> 29 out of 29 typecheck tests
+      pass at time of writing.</li>
+    <li><strong>Regression:</strong> PA1 lexer and PA2 parser tests pass
+      when run from their respective test directories.</li>
+    <li><strong>Systems tested:</strong> macOS (Darwin 25.2.0) for
+      development, Linux (course Docker image
+      <code>sileiren/cs4120-env:v1</code>) for harness testing.
+    </li>
+  </ul>
+  <hr />
+  <h2 id="work-plan">6. Work Plan</h2>
+  <p>The work was divided by component with clear dependency ordering:</p>
+  <ol type="1">
+    <li><strong>Fadi:</strong> Designed and implemented
+      <code>ScopedSymbolTable</code> and <code>Context</code> with unit tests
+      (independent, no dependencies).
+    </li>
+    <li><strong>Yoseph:</strong> Built core type checker logic using a
+      context stub, then integrated with Fadi’s real context
+      implementation.</li>
+    <li><strong>Charles:</strong> Added span propagation to AST and grammar,
+      refactored error handling to use <code>Result</code> types, structured
+      <code>SemanticError</code> with spans.
+    </li>
+    <li><strong>Temi:</strong> Implemented CLI <code>--typecheck</code>
+      pipeline, interface file loading, output formatting, and arg
+      normalization.</li>
+  </ol>
+  <p>Integration happened in around three merges: The bulk of the type
+    checker work was developed by Yoseph in his own branch. Charles picked
+    up off of Yoseph’s branch and added proper error handling with spans.
+    Fadi’s type context and Temi’s CLI work was developed mostly in parallel
+    and integrated last.</p>
+  <hr />
+  <h2 id="ai-usage">7. AI Usage</h2>
+  <p>We used AI tools (Claude, GitHub Copilot) in the following ways:</p>
+  <ul>
+    <li><strong>Error handling refactoring:</strong> AI helped identify
+      inconsistencies in <code>Result</code> type usage across the type
+      checker and suggested the <code>?</code> operator pattern for fail-fast
+      propagation.</li>
+    <li><strong>Span propagation design:</strong> AI helped evaluate the
+      tradeoff between adding span fields to each AST node vs. a generic
+      <code>Spanned&lt;T&gt;</code> wrapper, and assisted with the mechanical
+      updates across grammar rules and pattern matching code.
+    </li>
+    <li><strong>CLI debugging:</strong> AI diagnosed the
+      <code>-libpath</code> single-dash issue by tracing how <code>clap</code>
+      interprets chained short flags.
+    </li>
+    <li><strong>Boilerplate:</strong> Copilot provided autocomplete for
+      repetitive match arms in the type checker.</li>
+  </ul>
+  <p>AI was helpful for accelerating mechanical refactoring and diagnosing
+    non-obvious issues (like the CLI flag parsing). Core type checking logic
+    and the scoped symbol table were designed and implemented by team
+    members directly.</p>
+  <hr />
+  <h2 id="known-problems">8. Known Problems</h2>
+  <ul>
+    <li>The type checker uses <code>context.clone()</code> to save/restore
+      state around scoped constructs (blocks, if/else, while) rather than
+      using the context’s <code>enter_scope</code>/<code>exit_scope</code>
+      methods. This is correct but less efficient for deeply nested
+      programs.</li>
+    <li>Some <code>SemanticErrorKind</code> variants
+      (<code>BreakOutsideLoop</code>) are defined but not yet used, as loop
+      break statements are not yet fully implemented.</li>
+  </ul>
+  <hr />
+  <h2 id="comments">9. Comments</h2>
+  <p>The biggest surprise was the <code>-libpath</code> single-dash issue
+    — the test harness was passing Java-style flags that clap silently
+    misinterpreted as chained short flags. This took time to diagnose
+    because the error message (<code>unexpected argument &#39;-b&#39; found</code>)
+    gave no indication of the real problem.</p>
+  <p>The <code>Spanned&lt;T&gt;</code> wrapper approach worked well in
+    practice. The main cost was the one-time effort of updating all grammar
+    rules and pattern matching sites, but once done, every expression and
+    statement carried its source location with zero ongoing effort.</p>
+</body>
+
+</html>
