@@ -18,62 +18,68 @@ CS 4120 Spring 2026
 ## Usage
 
 ```bash
-# Parse a .eta or .eti file
+# Type check a .eta file (PA3)
+./etac --typecheck <filename>.eta
+
+# Type check with library path for interface files
+./etac --typecheck -libpath <libdir> <filename>.eta
+
+# Type check with all options
+./etac --typecheck -libpath <libdir> -D <outdir> --sourcepath <srcdir> <files...>
+
+# Parse a .eta or .eti file (PA2)
 ./etac --parse <filename>.eta
 ./etac --parse <filename>.eti
-
-# Parse with output directory and source path
-./etac --parse -D <outdir> --sourcepath <srcdir> <files...>
 
 # Lex a file (PA1)
 ./etac --lex <filename>.eta
 
-# Specify output directory
+# Specify output directory for any mode
 ./etac --lex -D <output_dir> <filename>.eta
 ```
 
 ## Testing
 
 ```bash
-# Run all PA2 tests and check against expected output
-./etac-build && for f in eth/tests/pa2/*.eta eth/tests/pa2/*.eti; do ./etac --parse "$f" 2>/dev/null; done && PASS=0 && FAIL=0 && for f in eth/tests/pa2/*.parsedsol; do base="${f%.parsedsol}"; if diff -q "$base.parsed" "$f" > /dev/null 2>&1; then PASS=$((PASS+1)); else echo "FAIL: $base"; FAIL=$((FAIL+1)); fi; done && echo "$PASS passed, $FAIL failed" && rm -f eth/tests/pa2/*.parsed
-
-# Run all PA1 tests
-for f in eth/tests/pa1/*.eta; do ./etac --lex "$f"; done && \
-for f in eth/tests/pa1/*.eta; do \
-  base="${f%.eta}"; \
-  if [ -f "$base.lexedsol" ]; then \
-    diff "$base.lexed" "$base.lexedsol" > /dev/null || echo "FAIL: $f"; \
-  fi; \
-done && echo "Done"
-
-# Run unit tests
+# Run unit tests (context, s-expression, pretty printer)
 cargo test
+
+# Run PA3 typecheck tests via eth (inside Docker)
+cd ~/eth/tests/pa3 && eth -compilerpath ~/shared ethScript
+
+# Run PA2 parse tests via eth
+cd ~/eth/tests/pa2 && eth -compilerpath ~/shared ethScript
+
+# Run PA1 lex tests via eth
+cd ~/eth/tests/pa1 && eth -compilerpath ~/shared ethScript
 ```
 
 ## Project Structure
 
 ```
 src/
-├── main.rs              # Entry point, CLI dispatch
-├── lib.rs               # Module declarations
+├── main.rs                # Entry point, CLI dispatch, typecheck pipeline
 ├── cli/
-│   ├── cli.rs           # Command-line argument parsing (clap)
-│   ├── io.rs            # File I/O operations
-│   └── formatter.rs     # Lexer output formatting (.lexed files)
+│   ├── cli.rs             # Command-line argument parsing (clap)
+│   ├── io.rs              # File I/O operations
+│   └── formatter.rs       # Lexer output formatting (.lexed files)
 ├── lexer/
-│   ├── token.rs         # Logos token definitions, tokenize(), LexerExtras
-│   └── callbacks.rs     # String/char literal parsing callbacks
+│   ├── token.rs           # Logos token definitions, tokenize(), LexerExtras
+│   └── callbacks.rs       # String/char literal parsing callbacks
 ├── parser/
-│   ├── ast.rs           # AST node types, parser Token enum
-│   ├── eta.lalrpop      # LALRPOP grammar for Eta programs and interfaces
-│   └── adapter.rs       # Logos-to-LALRPOP token conversion
-├── sexp.rs              # S-expression printer for AST output
-├── sexp_tests.rs        # S-expression printer unit tests
-├── pretty.rs            # Source-code pretty printer
-└── pretty_tests.rs      # Pretty printer unit tests
+│   ├── ast.rs             # AST types, Span/Spanned<T>, Token enum
+│   ├── eta.lalrpop        # LALRPOP grammar with @L/@R span captures
+│   └── adapter.rs         # Logos-to-LALRPOP token conversion
+├── checker/
+│   ├── check.rs           # Type checker (expressions, statements, functions)
+│   ├── context.rs         # Scoped symbol table and Context
+│   └── context_tests.rs   # Context unit tests
+├── sexp.rs                # S-expression printer for AST output
+├── sexp_tests.rs          # S-expression printer unit tests
+├── pretty.rs              # Source-code pretty printer
+└── pretty_tests.rs        # Pretty printer unit tests
 ```
 
 ## Documentation
 
-See `overview.md` for full design documentation.
+See `overview.md` for full PA3 design documentation.
