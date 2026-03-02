@@ -39,7 +39,6 @@ pub fn pretty_expr(e: &Expr) -> String {
 pub fn pretty_stmt(s: &Stmt) -> String {
     let mut buf = String::new();
     write_stmt(&mut buf, s, 0);
-    // write_stmt always appends '\n'; strip trailing newlines for the public API.
     let trimmed = buf.trim_end_matches('\n');
     trimmed.to_string()
 }
@@ -52,13 +51,13 @@ impl std::fmt::Display for Program {
     }
 }
 
-impl std::fmt::Display for Expr {
+impl std::fmt::Display for Spanned<ExprKind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&pretty_expr(self))
     }
 }
 
-impl std::fmt::Display for Stmt {
+impl std::fmt::Display for Spanned<StmtKind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&pretty_stmt(self))
     }
@@ -150,8 +149,8 @@ fn write_block(buf: &mut String, block: &Block, level: usize) {
 // ── statements ─────────────────────────────────────────────────────
 
 fn write_stmt(buf: &mut String, s: &Stmt, level: usize) {
-    match s {
-        Stmt::If(cond, then_branch, else_branch) => {
+    match &s.node {
+        StmtKind::If(cond, then_branch, else_branch) => {
             indent(buf, level);
             write!(buf, "if {} ", format_expr(cond, Prec::Top)).unwrap();
             write_stmt_body(buf, then_branch, level);
@@ -161,18 +160,18 @@ fn write_stmt(buf: &mut String, s: &Stmt, level: usize) {
             }
             buf.push('\n');
         }
-        Stmt::While(cond, body) => {
+        StmtKind::While(cond, body) => {
             indent(buf, level);
             write!(buf, "while {} ", format_expr(cond, Prec::Top)).unwrap();
             write_stmt_body(buf, body, level);
             buf.push('\n');
         }
-        Stmt::Block(block) => {
+        StmtKind::Block(block) => {
             indent(buf, level);
             write_block(buf, block, level);
             buf.push('\n');
         }
-        Stmt::Assign(targets, values) => {
+        StmtKind::Assign(targets, values) => {
             write_assign(buf, targets, values, level);
         }
     }
@@ -181,12 +180,11 @@ fn write_stmt(buf: &mut String, s: &Stmt, level: usize) {
 /// Writes the body of an `if` or `while`. If it is already a block, writes
 /// the block directly; otherwise wraps the single statement in braces.
 fn write_stmt_body(buf: &mut String, s: &Stmt, level: usize) {
-    match s {
-        Stmt::Block(block) => {
+    match &s.node {
+        StmtKind::Block(block) => {
             write_block(buf, block, level);
         }
         _ => {
-            // Wrap single statement in a block for clarity.
             buf.push_str("{\n");
             write_stmt(buf, s, level + 1);
             indent(buf, level);
@@ -196,18 +194,15 @@ fn write_stmt_body(buf: &mut String, s: &Stmt, level: usize) {
 }
 
 /// Format an assignment / declaration / procedure-call statement.
-fn write_assign(buf: &mut String, targets: &[AssignTarget], values: &[Expr], level: usize) {
+pub fn write_assign(buf: &mut String, targets: &[AssignTarget], values: &[Expr], level: usize) {
     indent(buf, level);
 
-    // Procedure call: no targets – the AST invariant is exactly one FuncCall
-    // expression, but we print all values defensively.
     if targets.is_empty() {
         debug_assert!(
             values.len() == 1,
             "expected exactly 1 value in procedure-call statement, got {}",
             values.len()
         );
-        // TODO: could also assert matches!(values[0], Expr::FuncCall(..))
         for (i, val) in values.iter().enumerate() {
             if i > 0 {
                 buf.push_str(", ");
@@ -218,7 +213,6 @@ fn write_assign(buf: &mut String, targets: &[AssignTarget], values: &[Expr], lev
         return;
     }
 
-    // Single declaration with no initialiser.
     if values.is_empty() && targets.len() == 1 {
         if let AssignTarget::Decl(name, ty) = &targets[0] {
             write!(buf, "{}: {}", name, format_type(ty)).unwrap();
@@ -227,7 +221,6 @@ fn write_assign(buf: &mut String, targets: &[AssignTarget], values: &[Expr], lev
         }
     }
 
-    // General case: targets = values
     for (i, t) in targets.iter().enumerate() {
         if i > 0 {
             buf.push_str(", ");
@@ -323,14 +316,14 @@ fn format_expr(e: &Expr, ctx: Prec) -> String {
 
 /// Returns (formatted_string, precedence_of_this_node).
 fn format_expr_inner(e: &Expr) -> (String, Prec) {
-    match e {
-        Expr::IntLit(n) => (n.to_string(), Prec::Atom),
-        Expr::BoolLit(b) => (b.to_string(), Prec::Atom),
-        Expr::CharLit(c) => (format_char_lit(*c), Prec::Atom),
-        Expr::StringLit(s) => (format_string_lit(s), Prec::Atom),
-        Expr::Var(name) => (name.clone(), Prec::Atom),
+    match &e.node {
+        ExprKind::IntLit(n) => (n.to_string(), Prec::Atom),
+        ExprKind::BoolLit(b) => (b.to_string(), Prec::Atom),
+        ExprKind::CharLit(c) => (format_char_lit(*c), Prec::Atom),
+        ExprKind::StringLit(s) => (format_string_lit(s), Prec::Atom),
+        ExprKind::Var(name) => (name.clone(), Prec::Atom),
 
-        Expr::ArrayConstructor(elems) => {
+        ExprKind::ArrayConstructor(elems) => {
             let mut s = String::from("{");
             for (i, elem) in elems.iter().enumerate() {
                 if i > 0 {
@@ -342,7 +335,7 @@ fn format_expr_inner(e: &Expr) -> (String, Prec) {
             (s, Prec::Atom)
         }
 
-        Expr::FuncCall(name, args) => {
+        ExprKind::FuncCall(name, args) => {
             let mut s = name.clone();
             s.push('(');
             for (i, a) in args.iter().enumerate() {
@@ -355,20 +348,18 @@ fn format_expr_inner(e: &Expr) -> (String, Prec) {
             (s, Prec::Postfix)
         }
 
-        Expr::Index(arr, idx) => {
-            // The array sub-expression needs at least Postfix precedence
-            // so that lower-precedence exprs get parenthesised.
+        ExprKind::Index(arr, idx) => {
             let arr_s = format_expr(arr, Prec::Postfix);
             let idx_s = format_expr(idx, Prec::Top);
             (format!("{}[{}]", arr_s, idx_s), Prec::Postfix)
         }
 
-        Expr::Length(inner) => {
+        ExprKind::Length(inner) => {
             let inner_s = format_expr(inner, Prec::Top);
             (format!("length({})", inner_s), Prec::Postfix)
         }
 
-        Expr::UnaryOp(op, inner) => {
+        ExprKind::UnaryOp(op, inner) => {
             let sym = match op {
                 UnaryOp::Neg => "-",
                 UnaryOp::Not => "!",
@@ -377,11 +368,8 @@ fn format_expr_inner(e: &Expr) -> (String, Prec) {
             (format!("{}{}", sym, inner_s), Prec::Unary)
         }
 
-        Expr::BinOp(op, lhs, rhs) => {
+        ExprKind::BinOp(op, lhs, rhs) => {
             let prec = binop_prec(op);
-            // Left-associative: left child needs parens only if strictly
-            // lower precedence; right child needs parens if lower *or equal*
-            // (to force left-associativity).
             let lhs_s = format_expr(lhs, prec);
             let rhs_s = format_expr(rhs, next_prec(prec));
             (format!("{} {} {}", lhs_s, binop_str(op), rhs_s), prec)

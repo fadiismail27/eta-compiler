@@ -1,7 +1,0 @@
-(()
- ((test
-   ((n int))
-   ()
-   ((while (> n 0) (= n (- n 1)))
-    (while (< n 10) ((= n (+ n 1))))
-    (while true ((while false ((= (x int) 0)))))))))

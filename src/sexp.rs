@@ -116,8 +116,8 @@ fn sexp_block(block: &Block) -> SExp {
 // ── statements ─────────────────────────────────────────────────────
 
 fn sexp_stmt(s: &Stmt) -> SExp {
-    match s {
-        Stmt::If(cond, then_branch, else_branch) => {
+    match &s.node {
+        StmtKind::If(cond, then_branch, else_branch) => {
             let mut elems = vec![
                 SExp::Atom("if".into()),
                 sexp_expr(cond),
@@ -128,26 +128,26 @@ fn sexp_stmt(s: &Stmt) -> SExp {
             }
             SExp::List(elems)
         }
-        Stmt::While(cond, body) => SExp::List(vec![
+        StmtKind::While(cond, body) => SExp::List(vec![
             SExp::Atom("while".into()),
             sexp_expr(cond),
             sexp_stmt_body(body),
         ]),
-        Stmt::Block(block) => sexp_block(block),
-        Stmt::Assign(targets, values) => sexp_assign(targets, values),
+        StmtKind::Block(block) => sexp_block(block),
+        StmtKind::Assign(targets, values) => sexp_assign(targets, values),
     }
 }
 
 /// For if/while bodies: if it's a Block, render as `(stmts...)`;
 /// otherwise render the single statement directly.
 fn sexp_stmt_body(s: &Stmt) -> SExp {
-    match s {
-        Stmt::Block(block) => sexp_block(block),
-        other => sexp_stmt(other),
+    match &s.node {
+        StmtKind::Block(block) => sexp_block(block),
+        _ => sexp_stmt(s),
     }
 }
 
-/// Handle the many cases of `Stmt::Assign(targets, values)`.
+/// Handle the many cases of `StmtKind::Assign(targets, values)`.
 fn sexp_assign(targets: &[AssignTarget], values: &[Expr]) -> SExp {
     // Procedure call: no targets, just the call expression
     if targets.is_empty() {
@@ -158,8 +158,6 @@ fn sexp_assign(targets: &[AssignTarget], values: &[Expr]) -> SExp {
     }
 
     // Declaration only (no initialiser): single Decl target, no values
-    //   `x: int` → `(x int)`
-    //   `a: int[][]` → `(a ([] ([] int)))`
     if values.is_empty() && targets.len() == 1 {
         return sexp_decl_target(&targets[0]);
     }
@@ -175,7 +173,6 @@ fn sexp_assign(targets: &[AssignTarget], values: &[Expr]) -> SExp {
     let rhs = if values.len() == 1 {
         sexp_expr(&values[0])
     } else {
-        // Multiple values shouldn't normally occur; render as a list
         SExp::List(values.iter().map(sexp_expr).collect())
     };
 
@@ -201,8 +198,6 @@ fn sexp_assign_target(t: &AssignTarget) -> SExp {
 }
 
 /// Format a declaration-only target (no assignment, just the declaration).
-/// `Decl("x", Int)` → `(x int)`
-/// `Var("x")` → `x`  (bare variable name, though unusual without init)
 fn sexp_decl_target(t: &AssignTarget) -> SExp {
     match t {
         AssignTarget::Decl(name, ty) => {
@@ -215,20 +210,20 @@ fn sexp_decl_target(t: &AssignTarget) -> SExp {
 // ── expressions ────────────────────────────────────────────────────
 
 fn sexp_expr(e: &Expr) -> SExp {
-    match e {
-        Expr::IntLit(n) => SExp::Atom(n.to_string()),
-        Expr::BoolLit(b) => SExp::Atom(b.to_string()),
-        Expr::CharLit(c) => SExp::Atom(format_char_lit(*c)),
-        Expr::StringLit(s) => SExp::Atom(format_string_lit(s)),
-        Expr::Var(name) => SExp::Atom(name.clone()),
+    match &e.node {
+        ExprKind::IntLit(n) => SExp::Atom(n.to_string()),
+        ExprKind::BoolLit(b) => SExp::Atom(b.to_string()),
+        ExprKind::CharLit(c) => SExp::Atom(format_char_lit(*c)),
+        ExprKind::StringLit(s) => SExp::Atom(format_string_lit(s)),
+        ExprKind::Var(name) => SExp::Atom(name.clone()),
 
-        Expr::BinOp(op, lhs, rhs) => SExp::List(vec![
+        ExprKind::BinOp(op, lhs, rhs) => SExp::List(vec![
             SExp::Atom(binop_str(op).into()),
             sexp_expr(lhs),
             sexp_expr(rhs),
         ]),
 
-        Expr::UnaryOp(op, inner) => {
+        ExprKind::UnaryOp(op, inner) => {
             let sym = match op {
                 UnaryOp::Neg => "-",
                 UnaryOp::Not => "!",
@@ -236,21 +231,21 @@ fn sexp_expr(e: &Expr) -> SExp {
             SExp::List(vec![SExp::Atom(sym.into()), sexp_expr(inner)])
         }
 
-        Expr::FuncCall(name, args) => {
+        ExprKind::FuncCall(name, args) => {
             let mut elems = vec![SExp::Atom(name.clone())];
             elems.extend(args.iter().map(sexp_expr));
             SExp::List(elems)
         }
 
-        Expr::Index(arr, idx) => {
+        ExprKind::Index(arr, idx) => {
             SExp::List(vec![SExp::Atom("[]".into()), sexp_expr(arr), sexp_expr(idx)])
         }
 
-        Expr::Length(inner) => {
+        ExprKind::Length(inner) => {
             SExp::List(vec![SExp::Atom("length".into()), sexp_expr(inner)])
         }
 
-        Expr::ArrayConstructor(elems) => {
+        ExprKind::ArrayConstructor(elems) => {
             SExp::List(elems.iter().map(sexp_expr).collect())
         }
     }
@@ -325,8 +320,6 @@ fn render(sexp: &SExp, indent: usize) -> String {
                 return flat;
             }
 
-            // Multi-line rendering: each element on its own line,
-            // indented one space past the opening paren.
             let inner_indent = indent + 1;
             let mut lines = Vec::new();
             for (i, elem) in elems.iter().enumerate() {
