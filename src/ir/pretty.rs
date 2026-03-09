@@ -21,23 +21,39 @@ fn write_expr(expr: &Expr, indent: usize, out: &mut String) {
         }
         Expr::BinOp { op, left, right } => {
             let _ = writeln!(out, "{}(BINOP {}", pad, op);
-            write_expr(left, indent + 2, out);
-            write_expr(right, indent + 2, out);
+            let child_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(LEFT", child_pad);
+            write_expr(left, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
+
+            let _ = writeln!(out, "{}(RIGHT", child_pad);
+            write_expr(right, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
             let _ = writeln!(out, "{})", pad);
         }
         Expr::UnOp { op, expr } => {
             let _ = writeln!(out, "{}(UNOP {}", pad, op);
-            write_expr(expr, indent + 2, out);
+            let child_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(EXPR", child_pad);
+            write_expr(expr, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
             let _ = writeln!(out, "{})", pad);
         }
         Expr::Mem(addr) => {
             let _ = writeln!(out, "{}(MEM", pad);
-            write_expr(addr, indent + 2, out);
+            let child_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(ADDR", child_pad);
+            write_expr(addr, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
             let _ = writeln!(out, "{})", pad);
         }
         Expr::Call { target, args } => {
             let _ = writeln!(out, "{}(CALL", pad);
-            write_expr(target, indent + 2, out);
+            let child_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(TARGET", child_pad);
+            write_expr(target, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
+
             let args_pad = " ".repeat(indent + 2);
             let _ = writeln!(out, "{}(ARGS", args_pad);
             for arg in args {
@@ -51,14 +67,77 @@ fn write_expr(expr: &Expr, indent: usize, out: &mut String) {
         }
         Expr::ESeq { stmt, expr } => {
             let _ = writeln!(out, "{}(ESEQ", pad);
-            write_stmt_placeholder(stmt, indent + 2, out);
-            write_expr(expr, indent + 2, out);
+            let child_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(STMT", child_pad);
+            write_stmt(stmt, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
+
+            let _ = writeln!(out, "{}(EXPR", child_pad);
+            write_expr(expr, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
             let _ = writeln!(out, "{})", pad);
         }
     }
 }
 
-fn write_stmt_placeholder(stmt: &Stmt, indent: usize, out: &mut String) {
+fn write_stmt(stmt: &Stmt, indent: usize, out: &mut String) {
     let pad = " ".repeat(indent);
-    let _ = writeln!(out, "{}(STMT {:?})", pad, stmt);
+    match stmt {
+        Stmt::Move { dst, src } => {
+            let _ = writeln!(out, "{}(MOVE", pad);
+            let child_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(DST", child_pad);
+            write_expr(dst, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
+
+            let _ = writeln!(out, "{}(SRC", child_pad);
+            write_expr(src, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
+            let _ = writeln!(out, "{})", pad);
+        }
+        Stmt::Seq(stmts) => {
+            let _ = writeln!(out, "{}(SEQ", pad);
+            let stmt_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(STMTS", stmt_pad);
+            for stmt in stmts {
+                write_stmt(stmt, indent + 4, out);
+            }
+            let _ = writeln!(out, "{})", stmt_pad);
+            let _  = writeln!(out, "{})", pad);
+        }
+        Stmt::Jump(label) => {
+            let _ = writeln!(out, "{}(JUMP {})", pad, label);
+        }
+        Stmt::CJump { op, left, right, t, f } => {
+            let _ = writeln!(out, "{}(CJUMP {}", pad, op);
+
+            let child_pad = " ".repeat(indent + 2);
+
+            let _ = writeln!(out, "{}(LEFT", child_pad);
+            write_expr(left, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
+
+            let _ = writeln!(out, "{}(RIGHT", child_pad);
+            write_expr(right, indent + 4, out);
+            let _ = writeln!(out, "{})", child_pad);
+
+            let _ = writeln!(out, "{}(TRUE {})", child_pad, t);
+            let _ = writeln!(out, "{}(FALSE {})", child_pad, f);
+
+            let _ = writeln!(out, "{})", pad);
+        }
+        Stmt::Label(label) => {
+            let _ = writeln!(out, "{}(LABEL {})", pad, label);
+        }
+        Stmt::Return(exprs) => {
+            let _ = writeln!(out, "{}(RETURN", pad);
+            let ret_pad = " ".repeat(indent + 2);
+            let _ = writeln!(out, "{}(EXPRS", ret_pad);
+            for expr in exprs {
+                write_expr(expr, indent + 4, out);
+            }
+            let _ = writeln!(out, "{})", ret_pad);
+            let _ = writeln!(out, "{})", pad);
+        }
+    }
 }
