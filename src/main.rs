@@ -3,8 +3,7 @@ mod checker;
 mod cli;
 mod lexer;
 mod parser;
-mod pretty;
-mod sexp;
+mod ir;
 // mod typecheck;
 
 use cli::formatter;
@@ -149,7 +148,7 @@ fn process_parse_file(
         let parse_result =
             parser::eta::InterfaceParser::new().parse(tokens.into_iter().map(Ok::<_, String>));
         match parse_result {
-            Ok(ast) => sexp::sexp_interface(&ast),
+            Ok(ast) => parser::sexp::sexp_interface(&ast),
             Err(e) => format_parse_error(&source, e),
         }
     } else {
@@ -157,7 +156,7 @@ fn process_parse_file(
         let parse_result =
             parser::eta::ProgramParser::new().parse(tokens.into_iter().map(Ok::<_, String>));
         match parse_result {
-            Ok(ast) => sexp::sexp_program(&ast),
+            Ok(ast) => parser::sexp::sexp_program(&ast),
             Err(e) => format_parse_error(&source, e),
         }
     };

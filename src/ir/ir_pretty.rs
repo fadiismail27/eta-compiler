@@ -10,6 +10,13 @@ pub fn pretty_expr(expr: &Expr) -> String {
     out
 }
 
+/// Pretty-print an IR statement tree.
+pub fn pretty_stmt(stmt: &Stmt) -> String {
+    let mut out = String::new();
+    write_stmt(stmt, 0, &mut out);
+    out
+}
+
 fn write_expr(expr: &Expr, indent: usize, out: &mut String) {
     let pad = " ".repeat(indent);
     match expr {

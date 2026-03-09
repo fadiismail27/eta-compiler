@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod adapter;
+pub mod sexp;
 
 // Include the LALRPOP-generated parser from OUT_DIR.
 #[allow(clippy::all)]
