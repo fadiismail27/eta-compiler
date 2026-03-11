@@ -1,5 +1,5 @@
-use super::op::{BinOp, UnOp};
-use super::stmt::Stmt;
+use super::ir_op::{BinOp, UnOp};
+use super::ir_stmt::Stmt;
 use super::symbol::{Label, Temp};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

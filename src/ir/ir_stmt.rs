@@ -1,5 +1,5 @@
-use super::op::{RelOp};
-use super::expr::Expr;
+use super::ir_op::{RelOp};
+use super::ir_expr::Expr;
 use super::symbol::{Label};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

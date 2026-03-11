@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
-use super::expr::Expr;
-use super::stmt::Stmt;
+use super::ir_expr::Expr;
+use super::ir_stmt::Stmt;
 
 /// Pretty-print an IR expression tree.
 pub fn pretty_expr(expr: &Expr) -> String {
