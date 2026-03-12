@@ -186,17 +186,17 @@ pub enum IdentStmtRest {
 // expressions
 #[derive(PartialEq, Clone, Debug)]
 pub enum ExprKind {
-    BinOp(BinOp, Box<Expr>, Box<Expr>),
-    UnaryOp(UnaryOp, Box<Expr>),
-    Var(String),
-    IntLit(i64),
-    CharLit(i64),
-    StringLit(String),
-    BoolLit(bool),
-    FuncCall(String, Vec<Expr>),
-    Index(Box<Expr>, Box<Expr>),
-    Length(Box<Expr>),
-    ArrayConstructor(Vec<Expr>),
+    BinOp(BinOp, Box<Expr>, Box<Expr>), //
+    UnaryOp(UnaryOp, Box<Expr>), //
+    Var(String), //
+    IntLit(i64), //
+    CharLit(i64), //
+    StringLit(String), 
+    BoolLit(bool), //
+    FuncCall(String, Vec<Expr>), //
+    Index(Box<Expr>, Box<Expr>), //
+    Length(Box<Expr>), // 
+    ArrayConstructor(Vec<Expr>), //
 }
 
 // operators
